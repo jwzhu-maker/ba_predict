@@ -115,6 +115,40 @@ the big road's dragon-tail layout. Reproduced faithfully, and labelled in the
 UI for what it is: a complete description of the past with no bearing on the
 next coup.
 
+## Running it on your phone
+
+Two ways, and they do different things.
+
+**Quick look, same Wi-Fi.** `npm run dev:web` binds every interface and prints
+a `Network:` URL (`http://192.168.x.x:5173`). Open that on the handset. This is
+plain HTTP, so it runs as an ordinary browser tab — no install prompt, no
+offline, no home-screen icon. Fine for trying it; not the real thing.
+
+**Actually installing it.** A service worker and the install prompt require
+HTTPS, so the app has to be served from somewhere with a certificate. It is a
+static bundle with no backend, so any static host works and the free tiers are
+more than enough:
+
+| Host | Settings |
+|---|---|
+| Vercel / Netlify / Cloudflare Pages | Build `npm run build`, output `apps/web/dist`, install `npm install`, root = repo root |
+| GitHub Pages | Needs Actions, which is currently blocked on billing |
+
+Point the host at this repo's root, not at `apps/web`: the build needs the
+workspace root to resolve `@ba-predict/engine` and `@ba-predict/app-core`.
+These hosts build on their own infrastructure, so they work even while GitHub
+Actions is unavailable.
+
+Then, on the phone:
+
+- **Android / Chrome** — an install prompt appears, or use the ⋮ menu →
+  *Add to Home screen*.
+- **iOS / Safari** — Share → *Add to Home Screen*. (iOS only honours this from
+  Safari's share sheet.)
+
+Installed, it opens standalone with its own icon and works with no signal,
+which is the normal condition on a casino floor.
+
 ## Deploying the web app
 
 `npm run build` emits a static bundle in `apps/web/dist`. It is a pure
