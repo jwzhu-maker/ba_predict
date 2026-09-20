@@ -12,6 +12,7 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Sparkline from "../components/Sparkline";
 import { Btn, Card, Chip, Hint, Notice, Row, Stat, useStyles } from "../components/ui";
+import { describeEdge } from "@ba-predict/app-core";
 import { formatOdds, formatPercent, formatUnits } from "../lib/format";
 import { useAdvice, useAppState, useDispatch, useMoney, useStats } from "../state/store";
 import { usePalette } from "../theme";
@@ -332,9 +333,9 @@ export default function TableScreen() {
         />
         {stats.totalWagered > 0 ? (
           <Hint>
-            {stats.actualEdge >= 0
-              ? `You have paid ${formatPercent(stats.actualEdge)} of everything you staked so far.`
-              : `You are ahead by ${formatPercent(-stats.actualEdge)} of everything you staked so far.`}{" "}
+            {describeEdge(stats.actualEdge).ahead
+              ? `You are ahead by ${formatPercent(describeEdge(stats.actualEdge).magnitude)} of everything you staked so far.`
+              : `You have paid ${formatPercent(describeEdge(stats.actualEdge).magnitude)} of everything you staked so far.`}{" "}
             Over a long enough session that converges on the table's edge; over one session it
             is mostly luck in either direction.
           </Hint>

@@ -1,3 +1,4 @@
+import { describeEdge } from "@ba-predict/app-core";
 import { PROGRESSIONS } from "@ba-predict/engine";
 import { Card, Notice, Stat } from "../components/Primitives";
 import { formatDateTime, formatDuration, formatPercent, formatUnits } from "../lib/format";
@@ -18,9 +19,8 @@ export default function HistoryScreen() {
 
   const name = (id: string) => PROGRESSIONS.find((entry) => entry.id === id)?.name ?? id;
   const sessions = [...archive].reverse();
-  // A negative "cost" is being up on turnover, and reading it out as a
-  // negative percentage under a "cost" label is just confusing.
-  const ahead = lifetime.actualEdge < 0;
+  const edge = describeEdge(lifetime.actualEdge);
+  const ahead = edge.ahead;
 
   return (
     <div className="screen">
@@ -34,10 +34,8 @@ export default function HistoryScreen() {
           />
           <Stat label="Total staked" value={money.format(lifetime.totalWagered)} />
           <Stat
-            label={ahead ? "Ahead by" : "Cost of play"}
-            value={
-              lifetime.totalWagered > 0 ? formatPercent(Math.abs(lifetime.actualEdge)) : "—"
-            }
+            label={edge.label}
+            value={lifetime.totalWagered > 0 ? formatPercent(edge.magnitude) : "—"}
             tone={ahead ? "good" : "bad"}
             hint="of everything staked"
           />

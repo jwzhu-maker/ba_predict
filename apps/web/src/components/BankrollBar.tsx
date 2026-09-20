@@ -1,3 +1,4 @@
+import { describeEdge } from "@ba-predict/app-core";
 import { formatPercent, formatUnits } from "../lib/format";
 import { useAppState, useMoney, useStats } from "../state/store";
 
@@ -6,6 +7,7 @@ export default function BankrollBar() {
   const stats = useStats();
   const money = useMoney();
   const profit = session.bankroll.bankroll - session.bankroll.startingBankroll;
+  const edge = describeEdge(stats.actualEdge);
   const { stopWin, stopLoss } = session.bankroll;
 
   const progress =
@@ -47,7 +49,7 @@ export default function BankrollBar() {
         Next stake {formatUnits(session.progression.units)}u &middot;{" "}
         {session.progression.id.replace(/-/g, " ")} &middot; {stats.wagers} wagers &middot;{" "}
         {stats.totalWagered > 0
-          ? `${formatPercent(stats.actualEdge)} actual cost`
+          ? `${formatPercent(edge.magnitude)} ${edge.noun}`
           : "no action yet"}
       </p>
     </div>

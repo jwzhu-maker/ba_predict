@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CURRENCIES, PLAIN_CURRENCY, createMoneyFormatter } from "../currency";
+import { describeEdge } from "../edge";
 import { buildSparkline } from "../sparkline";
 
 describe("money formatting", () => {
@@ -129,6 +130,38 @@ describe("telling the dollars apart", () => {
       // rounds 1234.5 to 1,235, which is the point of using Intl at all.
       const formatted = createMoneyFormatter(option.code).format(1234.5);
       expect(formatted, option.code).toMatch(/1[,. \s]?23[45]/);
+    }
+  });
+});
+
+describe("describing a realised edge", () => {
+  it("calls a positive edge a cost", () => {
+    const described = describeEdge(0.0106);
+    expect(described.ahead).toBe(false);
+    expect(described.magnitude).toBeCloseTo(0.0106, 10);
+    expect(described.noun).toBe("cost");
+    expect(described.label).toBe("Cost of play");
+  });
+
+  it("calls a negative edge being ahead, and never hands back a negative", () => {
+    // -22.08% "cost" is being up 22.08% on turnover. Rendering the raw number
+    // under a cost label states the opposite of what happened.
+    const described = describeEdge(-0.2208);
+    expect(described.ahead).toBe(true);
+    expect(described.magnitude).toBeCloseTo(0.2208, 10);
+    expect(described.noun).toBe("ahead");
+    expect(described.label).toBe("Ahead by");
+  });
+
+  it("treats exactly break-even as a cost of zero, not as ahead", () => {
+    const described = describeEdge(0);
+    expect(described.ahead).toBe(false);
+    expect(described.magnitude).toBe(0);
+  });
+
+  it("never returns a negative magnitude for any input", () => {
+    for (const value of [-5, -0.5, -1e-9, 0, 1e-9, 0.5, 5]) {
+      expect(describeEdge(value).magnitude).toBeGreaterThanOrEqual(0);
     }
   });
 });
