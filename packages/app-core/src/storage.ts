@@ -1,3 +1,4 @@
+import { isArchivedSession, parseEvictedTotals } from "./archive";
 import { createInitialState, type AppState } from "./reducer";
 
 /**
@@ -33,6 +34,13 @@ export function deserializeState(raw: string | null | undefined): AppState {
       ...initial,
       ...parsed,
       session: { ...initial.session, ...parsed.session },
+      // Validate every archived row, not just the container: a corrupt or
+      // older-schema payload can hold nulls or partial entries, and the
+      // History screen throws while summing them. A bad row is dropped rather
+      // than taking the whole restore down with it.
+      archive: Array.isArray(parsed.archive) ? parsed.archive.filter(isArchivedSession) : [],
+      evicted: parseEvictedTotals(parsed.evicted),
+      currency: typeof parsed.currency === "string" ? parsed.currency : initial.currency,
       // Undo history is deliberately not restored: it is a stack of whole
       // sessions, and "undo across a relaunch" is not a promise worth making.
       history: [],

@@ -1,10 +1,13 @@
-import { formatMoney, formatPercent, formatSigned, formatUnits } from "../lib/format";
-import { useAppState, useStats } from "../state/store";
+import { describeEdge } from "@ba-predict/app-core";
+import { formatPercent, formatUnits } from "../lib/format";
+import { useAppState, useMoney, useStats } from "../state/store";
 
 export default function BankrollBar() {
   const { session } = useAppState();
   const stats = useStats();
+  const money = useMoney();
   const profit = session.bankroll.bankroll - session.bankroll.startingBankroll;
+  const edge = describeEdge(stats.actualEdge);
   const { stopWin, stopLoss } = session.bankroll;
 
   const progress =
@@ -21,12 +24,12 @@ export default function BankrollBar() {
       <div className="bankroll-row">
         <div>
           <span className="bankroll-label">Bankroll</span>
-          <span className="bankroll-value">{formatMoney(session.bankroll.bankroll)}</span>
+          <span className="bankroll-value">{money.format(session.bankroll.bankroll)}</span>
         </div>
         <div className="bankroll-right">
           <span className="bankroll-label">Session</span>
           <span className={`bankroll-value ${profit >= 0 ? "good" : "bad"}`}>
-            {formatSigned(profit)}
+            {money.signed(profit)}
           </span>
         </div>
       </div>
@@ -46,7 +49,7 @@ export default function BankrollBar() {
         Next stake {formatUnits(session.progression.units)}u &middot;{" "}
         {session.progression.id.replace(/-/g, " ")} &middot; {stats.wagers} wagers &middot;{" "}
         {stats.totalWagered > 0
-          ? `${formatPercent(stats.actualEdge)} actual cost`
+          ? `${formatPercent(edge.magnitude)} ${edge.noun}`
           : "no action yet"}
       </p>
     </div>

@@ -6,12 +6,14 @@ import OddsTable from "../components/OddsTable";
 import { Card, Stat } from "../components/Primitives";
 import Sparkline from "../components/Sparkline";
 import WagerControls from "../components/WagerControls";
-import { formatMoney, formatPercent, formatSigned } from "../lib/format";
-import { useAppState, useStats } from "../state/store";
+import { describeEdge } from "@ba-predict/app-core";
+import { formatPercent } from "../lib/format";
+import { useAppState, useMoney, useStats } from "../state/store";
 
 export default function TableScreen() {
   const { session } = useAppState();
   const stats = useStats();
+  const money = useMoney();
 
   return (
     <div className="screen">
@@ -30,15 +32,15 @@ export default function TableScreen() {
             value={`${stats.wins} / ${stats.losses}`}
             hint={stats.pushes > 0 ? `${stats.pushes} pushed` : undefined}
           />
-          <Stat label="Total staked" value={formatMoney(stats.totalWagered)} />
+          <Stat label="Total staked" value={money.format(stats.totalWagered)} />
           <Stat
             label="Net"
-            value={formatSigned(stats.netProfit)}
+            value={money.signed(stats.netProfit)}
             tone={stats.netProfit >= 0 ? "good" : "bad"}
           />
           <Stat
             label="Worst drawdown"
-            value={formatMoney(stats.maxDrawdown)}
+            value={money.format(stats.maxDrawdown)}
             tone={stats.maxDrawdown > 0 ? "bad" : "muted"}
           />
         </div>
@@ -48,7 +50,9 @@ export default function TableScreen() {
         />
         {stats.totalWagered > 0 ? (
           <p className="field-hint">
-            You have paid {formatPercent(stats.actualEdge)} of everything you staked so far.
+            {describeEdge(stats.actualEdge).ahead
+              ? `You are ahead by ${formatPercent(describeEdge(stats.actualEdge).magnitude)} of everything you staked so far.`
+              : `You have paid ${formatPercent(describeEdge(stats.actualEdge).magnitude)} of everything you staked so far.`}{" "}
             Over a long enough session that converges on the table's edge; over one session it
             is mostly luck in either direction.
           </p>

@@ -13,8 +13,17 @@ import {
 } from "@ba-predict/engine";
 import { createShoe } from "@ba-predict/engine";
 import type { BankrollState } from "@ba-predict/engine";
+import {
+  ARCHIVE_LIMIT,
+  EMPTY_EVICTED,
+  archiveSession,
+  foldEvicted,
+  type ArchivedSession,
+  type EvictedTotals,
+} from "./archive";
+import { DEFAULT_CURRENCY } from "./currency";
 
-export type Screen = "table" | "roads" | "simulator" | "settings";
+export type Screen = "table" | "roads" | "simulator" | "history" | "settings";
 
 export interface AppState {
   session: SessionState;
@@ -26,6 +35,12 @@ export interface AppState {
   pendingWager: PlacedWager | null;
   /** Result of the most recent settlement, so the UI can report a partial one. */
   lastSettlement: Settlement | null;
+  /** Closed sessions, oldest first. Capped at ARCHIVE_LIMIT. */
+  archive: ArchivedSession[];
+  /** Totals for sessions that have aged out of `archive`, so lifetime stays lifetime. */
+  evicted: EvictedTotals;
+  /** ISO 4217 code, or PLAIN for unlabelled numbers. */
+  currency: string;
   screen: Screen;
 }
 
@@ -38,6 +53,9 @@ export function createInitialState(): AppState {
     cardEntry: [],
     pendingWager: null,
     lastSettlement: null,
+    archive: [],
+    evicted: EMPTY_EVICTED,
+    currency: DEFAULT_CURRENCY,
     screen: "table",
   };
 }
@@ -48,10 +66,13 @@ export type Action =
   | { type: "remove-card" }
   | { type: "clear-cards" }
   | { type: "place-wager"; wager: PlacedWager | null }
-  | { type: "record-coup"; coup: Omit<CoupInput, "cards"> }
+  | { type: "record-coup"; coup: Omit<CoupInput, "cards">; now?: number }
   | { type: "undo" }
   | { type: "new-shoe" }
   | { type: "reset-session" }
+  | { type: "end-session"; now?: number }
+  | { type: "clear-archive" }
+  | { type: "set-currency"; currency: string }
   | { type: "update-rules"; rules: Partial<TableRules> }
   | { type: "update-bankroll"; bankroll: Partial<BankrollState> }
   | { type: "set-progression"; progression: ProgressionId }
@@ -80,6 +101,54 @@ function syncProgressionOptions(session: SessionState): SessionState {
   return { ...session, progressionOptions: { ...session.progressionOptions, maxUnits } };
 }
 
+/**
+ * Archive the running session and open a fresh one.
+ *
+ * Undo history is dropped rather than carried: undo restores a session
+ * snapshot but knows nothing about the archive, so an "undo" across this
+ * boundary would hand back the old session while leaving its archived copy in
+ * place — and the next close would file it twice.
+ */
+function closeSession(
+  state: AppState,
+  options: { carryBankroll: boolean; now: number },
+): AppState {
+  const { rules, bankroll, progression, preferredBet, kellyMultiplier } = state.session;
+  const archived = archiveSession(state.session, options.now);
+  const appended = archived ? [...state.archive, archived] : state.archive;
+  const opening = options.carryBankroll ? bankroll.bankroll : bankroll.startingBankroll;
+
+  // Trim to the cap, folding anything dropped into the running totals rather
+  // than losing it from the lifetime figures.
+  let archive = appended;
+  let evicted = state.evicted;
+  if (appended.length > ARCHIVE_LIMIT) {
+    const overflow = appended.length - ARCHIVE_LIMIT;
+    for (const row of appended.slice(0, overflow)) evicted = foldEvicted(evicted, row);
+    archive = appended.slice(overflow);
+  }
+
+  return {
+    ...state,
+    session: syncProgressionOptions(
+      createSession({
+        rules,
+        bankroll: { ...bankroll, bankroll: opening, startingBankroll: opening },
+        progression: progression.id,
+        preferredBet,
+        kellyMultiplier,
+        startedAt: options.now,
+      }),
+    ),
+    history: [],
+    cardEntry: [],
+    pendingWager: null,
+    lastSettlement: null,
+    archive,
+    evicted,
+  };
+}
+
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "hydrate":
@@ -105,10 +174,14 @@ export function reducer(state: AppState, action: Action): AppState {
     case "record-coup": {
       const coup: CoupInput = { ...action.coup, cards: state.cardEntry };
       const { session, settlement } = applyCoup(state.session, coup, state.pendingWager);
+      // The sitting starts when money first goes down, not when the app
+      // launched.
+      const firstWagerAt =
+        session.firstWagerAt ?? (settlement ? (action.now ?? Date.now()) : null);
       return {
         ...state,
         history: remember(state),
-        session,
+        session: { ...session, firstWagerAt },
         cardEntry: [],
         pendingWager: null,
         lastSettlement: settlement,
@@ -130,36 +203,41 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case "new-shoe":
       // A new shoe resets the composition and the road, and leaves the money
-      // alone: the bankroll carries across shoes, the cards do not.
+      // alone: the bankroll carries across shoes, the cards do not. The coup
+      // ledger is money, not cards, so it carries too — only the marker for
+      // where this shoe's road starts moves.
       return {
         ...state,
         history: remember(state),
         session: {
           ...state.session,
           shoe: createShoe(state.session.rules.decks),
-          coups: [],
+          shoeStartIndex: state.session.coups.length,
         },
         cardEntry: [],
         pendingWager: null,
         lastSettlement: null,
       };
 
-    case "reset-session": {
-      const { rules, bankroll, progression, preferredBet, kellyMultiplier } = state.session;
-      return {
-        ...createInitialState(),
-        session: syncProgressionOptions({
-          ...createSession({
-            rules,
-            bankroll: { ...bankroll, bankroll: bankroll.startingBankroll },
-            progression: progression.id,
-            preferredBet,
-            kellyMultiplier,
-          }),
-        }),
-        screen: state.screen,
-      };
-    }
+    // Two ways to close a session, and they differ in one thing: what the
+    // next one opens with. "End" banks the night and carries the money you
+    // actually have forward, so the new session's profit starts at zero.
+    // "Reset" puts the original stake back, which is what you want after
+    // experimenting rather than playing.
+    case "end-session":
+      return closeSession(state, { carryBankroll: true, now: action.now ?? Date.now() });
+
+    case "reset-session":
+      return closeSession(state, { carryBankroll: false, now: Date.now() });
+
+    case "clear-archive":
+      // Clearing history clears all of it, evicted totals included —
+      // otherwise "delete every session" would leave the lifetime figures
+      // standing on rows the user can no longer see.
+      return { ...state, archive: [], evicted: EMPTY_EVICTED };
+
+    case "set-currency":
+      return { ...state, currency: action.currency };
 
     case "update-rules": {
       const rules = { ...state.session.rules, ...action.rules };
@@ -169,9 +247,12 @@ export function reducer(state: AppState, action: Action): AppState {
         session: syncProgressionOptions({
           ...state.session,
           rules,
-          // Changing the deck count invalidates the tracked composition.
+          // Changing the deck count invalidates the tracked composition and
+          // the road, but not the night's wagers.
           shoe: decksChanged ? createShoe(rules.decks) : state.session.shoe,
-          coups: decksChanged ? [] : state.session.coups,
+          shoeStartIndex: decksChanged
+            ? state.session.coups.length
+            : state.session.shoeStartIndex,
         }),
       };
     }

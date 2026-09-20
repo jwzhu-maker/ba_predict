@@ -54,28 +54,34 @@ describe("reducer", () => {
     expect(state.cardEntry).toHaveLength(6);
   });
 
-  it("starts a fresh shoe without touching the bankroll", () => {
+  it("starts a fresh shoe without touching the bankroll or the ledger", () => {
     const played = play(
       createInitialState(),
       { type: "place-wager", wager: { bet: "banker", amount: 10 } },
       { type: "record-coup", coup: { outcome: "banker" } },
     );
     const fresh = reducer(played, { type: "new-shoe" });
-    expect(fresh.session.coups).toEqual([]);
     expect(cardsRemaining(fresh.session.shoe)).toBe(cardsRemaining(createShoe(8)));
     expect(fresh.session.bankroll.bankroll).toBe(played.session.bankroll.bankroll);
+    // The wager ledger is money, not cards, so it survives the shoe change;
+    // only the road's starting point moves.
+    expect(fresh.session.coups).toHaveLength(1);
+    expect(fresh.session.shoeStartIndex).toBe(1);
   });
 
   it("re-shoes when the deck count changes, because the tracked cards are void", () => {
     const state = play(
       createInitialState(),
       { type: "add-card", rank: "A" },
+      { type: "place-wager", wager: { bet: "banker", amount: 10 } },
       { type: "record-coup", coup: { outcome: "banker" } },
       { type: "update-rules", rules: { decks: 6 } },
     );
     expect(state.session.rules.decks).toBe(6);
     expect(cardsRemaining(state.session.shoe)).toBe(312);
-    expect(state.session.coups).toEqual([]);
+    // The cards are void; the night's wagers are not.
+    expect(state.session.coups).toHaveLength(1);
+    expect(state.session.shoeStartIndex).toBe(1);
   });
 
   it("keeps the unit ceiling in step with the money settings", () => {

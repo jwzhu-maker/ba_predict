@@ -1,3 +1,4 @@
+import HistoryScreen from "./screens/HistoryScreen";
 import RoadsScreen from "./screens/RoadsScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import SimulatorScreen from "./screens/SimulatorScreen";
@@ -9,6 +10,7 @@ const TABS: { id: Screen; label: string; glyph: string }[] = [
   { id: "table", label: "Table", glyph: "◆" },
   { id: "roads", label: "Roads", glyph: "▦" },
   { id: "simulator", label: "Simulate", glyph: "∿" },
+  { id: "history", label: "History", glyph: "◷" },
   { id: "settings", label: "Settings", glyph: "⚙" },
 ];
 
@@ -27,6 +29,7 @@ export default function App() {
         {screen === "table" ? <TableScreen /> : null}
         {screen === "roads" ? <RoadsScreen /> : null}
         {screen === "simulator" ? <SimulatorScreen /> : null}
+        {screen === "history" ? <HistoryScreen /> : null}
         {screen === "settings" ? <SettingsScreen /> : null}
       </main>
 

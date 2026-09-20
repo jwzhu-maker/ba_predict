@@ -52,6 +52,16 @@ export interface AdviceInput {
   preferredBet: BetType | "auto";
   /** Fraction of full Kelly to use when a bet is genuinely +EV. */
   kellyMultiplier: number;
+  /**
+   * How to render a money amount inside the advice text.
+   *
+   * The reasons and warnings quote real amounts, so they have to agree with
+   * whatever the rest of the screen shows. Fixing two decimal places in here
+   * put "you are up 200.00" next to a bankroll rendered as "RM 200.00"; the
+   * caller owns the currency, so the caller owns the formatting. Defaults to
+   * two decimal places when no formatter is supplied.
+   */
+  formatAmount?: (value: number) => string;
 }
 
 export interface Advice {
@@ -125,6 +135,7 @@ function emptyAdvice(
 
 export function recommendBet(input: AdviceInput): Advice {
   const { shoe, rules, bankroll, progression, progressionOptions } = input;
+  const money = input.formatAmount ?? ((value: number) => value.toFixed(2));
   const shoeInfo = { remaining: cardsRemaining(shoe), penetration: penetration(shoe) };
 
   if (!canDealCoup(shoe)) {
@@ -151,7 +162,7 @@ export function recommendBet(input: AdviceInput): Advice {
   if (bankroll.stopWin !== null && profit >= bankroll.stopWin) {
     return {
       ...emptyAdvice("stop", shoe, [
-        `Stop-win reached: you are up ${profit.toFixed(2)}, at or past your ${bankroll.stopWin.toFixed(2)} target.`,
+        `Stop-win reached: you are up ${money(profit)}, at or past your ${money(bankroll.stopWin)} target.`,
         "Every further coup gives the edge back. Booking the win is the only move with a positive expectation here.",
       ]),
       probabilities,
@@ -163,7 +174,7 @@ export function recommendBet(input: AdviceInput): Advice {
   if (bankroll.stopLoss !== null && -profit >= bankroll.stopLoss) {
     return {
       ...emptyAdvice("stop", shoe, [
-        `Stop-loss reached: you are down ${(-profit).toFixed(2)}, at or past your ${bankroll.stopLoss.toFixed(2)} limit.`,
+        `Stop-loss reached: you are down ${money(-profit)}, at or past your ${money(bankroll.stopLoss)} limit.`,
         "This is the limit you set while you were not losing. It is worth more than this session.",
       ]),
       probabilities,
@@ -175,7 +186,7 @@ export function recommendBet(input: AdviceInput): Advice {
   if (bankroll.bankroll < bankroll.tableMin) {
     return {
       ...emptyAdvice("stop", shoe, [
-        `Your bankroll (${bankroll.bankroll.toFixed(2)}) is below the table minimum (${bankroll.tableMin.toFixed(2)}).`,
+        `Your bankroll (${money(bankroll.bankroll)}) is below the table minimum (${money(bankroll.tableMin)}).`,
       ]),
       probabilities,
       valuations,
@@ -208,7 +219,7 @@ export function recommendBet(input: AdviceInput): Advice {
       `No bet on this table has a positive expectation, so there is no mathematically correct stake — Kelly sizing returns zero.`,
     );
     reasons.push(
-      `Sizing therefore follows your ${progression.id} plan: ${progression.units} unit${progression.units === 1 ? "" : "s"} at ${bankroll.unitSize.toFixed(2)} each.`,
+      `Sizing therefore follows your ${progression.id} plan: ${progression.units} unit${progression.units === 1 ? "" : "s"} at ${money(bankroll.unitSize)} each.`,
     );
   }
 
@@ -231,12 +242,12 @@ export function recommendBet(input: AdviceInput): Advice {
   const requestedAmount = progression.units * bankroll.unitSize;
   if (requestedAmount > bankroll.bankroll) {
     warnings.push(
-      `The next step needs ${requestedAmount.toFixed(2)} and you have ${bankroll.bankroll.toFixed(2)}. The progression has outrun your bankroll.`,
+      `The next step needs ${money(requestedAmount)} and you have ${money(bankroll.bankroll)}. The progression has outrun your bankroll.`,
     );
   }
   if (requestedAmount > bankroll.tableMax) {
     warnings.push(
-      `The next step needs ${requestedAmount.toFixed(2)}, over the ${bankroll.tableMax.toFixed(2)} table maximum.`,
+      `The next step needs ${money(requestedAmount)}, over the ${money(bankroll.tableMax)} table maximum.`,
     );
   }
 
