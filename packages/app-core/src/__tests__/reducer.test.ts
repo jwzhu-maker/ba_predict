@@ -152,3 +152,38 @@ describe("persistence", () => {
     expect(deserializeState('{"session":{}}').session.bankroll.bankroll).toBe(1000);
   });
 });
+
+describe("remembering the shoe that just ended", () => {
+  it("records where the previous shoe began", () => {
+    let state = play(
+      createInitialState(),
+      { type: "record-coup", coup: { outcome: "banker" } },
+      { type: "record-coup", coup: { outcome: "player" } },
+      { type: "new-shoe" },
+      { type: "record-coup", coup: { outcome: "banker" } },
+    );
+    expect(state.session.shoeStartIndex).toBe(2);
+    expect(state.session.previousShoeStartIndex).toBe(0);
+    // The finished shoe is still recoverable for the replay.
+    const finished = state.session.coups.slice(
+      state.session.previousShoeStartIndex!,
+      state.session.shoeStartIndex,
+    );
+    expect(finished).toHaveLength(2);
+  });
+
+  it("is null until a second shoe starts", () => {
+    const state = play(createInitialState(), { type: "record-coup", coup: { outcome: "banker" } });
+    expect(state.session.previousShoeStartIndex).toBeNull();
+  });
+
+  it("tracks it across a deck-count change too", () => {
+    const state = play(
+      createInitialState(),
+      { type: "record-coup", coup: { outcome: "banker" } },
+      { type: "update-rules", rules: { decks: 6 } },
+    );
+    expect(state.session.previousShoeStartIndex).toBe(0);
+    expect(state.session.shoeStartIndex).toBe(1);
+  });
+});

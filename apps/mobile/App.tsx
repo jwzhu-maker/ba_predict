@@ -5,7 +5,6 @@ import { Pressable, ScrollView, StyleSheet, Text, View, useColorScheme } from "r
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Screen } from "@ba-predict/app-core";
 import HistoryScreen from "./src/screens/HistoryScreen";
-import RoadsScreen from "./src/screens/RoadsScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import SimulatorScreen from "./src/screens/SimulatorScreen";
 import TableScreen from "./src/screens/TableScreen";
@@ -14,8 +13,7 @@ import { usePalette } from "./src/theme";
 
 const TABS: { id: Screen; label: string; glyph: string }[] = [
   { id: "table", label: "Table", glyph: "◆" },
-  { id: "roads", label: "Roads", glyph: "▦" },
-  { id: "simulator", label: "Simulate", glyph: "∿" },
+  { id: "simulator", label: "Strategies", glyph: "∿" },
   { id: "history", label: "History", glyph: "◷" },
   { id: "settings", label: "Settings", glyph: "⚙" },
 ];
@@ -67,7 +65,6 @@ function Shell() {
         keyboardDismissMode="on-drag"
       >
         {screen === "table" ? <TableScreen /> : null}
-        {screen === "roads" ? <RoadsScreen /> : null}
         {screen === "simulator" ? <SimulatorScreen /> : null}
         {screen === "history" ? <HistoryScreen /> : null}
         {screen === "settings" ? <SettingsScreen /> : null}

@@ -22,6 +22,7 @@ import {
   type EvictedTotals,
 } from "./archive";
 import { DEFAULT_CURRENCY } from "./currency";
+import { SHOE_ARCHIVE_LIMIT, archiveShoe, type ArchivedShoe } from "./shoe-archive";
 
 export type Screen = "table" | "roads" | "simulator" | "history" | "settings";
 
@@ -39,6 +40,8 @@ export interface AppState {
   archive: ArchivedSession[];
   /** Totals for sessions that have aged out of `archive`, so lifetime stays lifetime. */
   evicted: EvictedTotals;
+  /** Finished shoes, oldest first, kept so strategy success rates span real play. */
+  shoeArchive: ArchivedShoe[];
   /** ISO 4217 code, or PLAIN for unlabelled numbers. */
   currency: string;
   screen: Screen;
@@ -55,6 +58,7 @@ export function createInitialState(): AppState {
     lastSettlement: null,
     archive: [],
     evicted: EMPTY_EVICTED,
+    shoeArchive: [],
     currency: DEFAULT_CURRENCY,
     screen: "table",
   };
@@ -68,10 +72,11 @@ export type Action =
   | { type: "place-wager"; wager: PlacedWager | null }
   | { type: "record-coup"; coup: Omit<CoupInput, "cards">; now?: number }
   | { type: "undo" }
-  | { type: "new-shoe" }
+  | { type: "new-shoe"; now?: number }
   | { type: "reset-session" }
   | { type: "end-session"; now?: number }
   | { type: "clear-archive" }
+  | { type: "clear-shoe-archive" }
   | { type: "set-currency"; currency: string }
   | { type: "update-rules"; rules: Partial<TableRules> }
   | { type: "update-bankroll"; bankroll: Partial<BankrollState> }
@@ -149,6 +154,27 @@ function closeSession(
   };
 }
 
+/**
+ * File the shoe that is ending, capped oldest-first.
+ *
+ * Unlike the session archive there is no running total for what falls off:
+ * success rates are computed by replaying the coups, and a shoe whose coups
+ * are gone cannot be replayed. The cap is generous enough that it is a
+ * limit on history, not on the figures being meaningful.
+ */
+function fileShoe(state: AppState, now: number): ArchivedShoe[] {
+  const coups = state.session.coups.slice(state.session.shoeStartIndex);
+  const filed = archiveShoe({
+    coups,
+    decks: state.session.rules.decks,
+    startedAt: state.session.firstWagerAt ?? state.session.startedAt,
+    endedAt: now,
+  });
+  if (!filed) return state.shoeArchive;
+  const next = [...state.shoeArchive, filed];
+  return next.length > SHOE_ARCHIVE_LIMIT ? next.slice(next.length - SHOE_ARCHIVE_LIMIT) : next;
+}
+
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "hydrate":
@@ -213,7 +239,9 @@ export function reducer(state: AppState, action: Action): AppState {
           ...state.session,
           shoe: createShoe(state.session.rules.decks),
           shoeStartIndex: state.session.coups.length,
+          previousShoeStartIndex: state.session.shoeStartIndex,
         },
+        shoeArchive: fileShoe(state, action.now ?? Date.now()),
         cardEntry: [],
         pendingWager: null,
         lastSettlement: null,
@@ -236,6 +264,9 @@ export function reducer(state: AppState, action: Action): AppState {
       // standing on rows the user can no longer see.
       return { ...state, archive: [], evicted: EMPTY_EVICTED };
 
+    case "clear-shoe-archive":
+      return { ...state, shoeArchive: [] };
+
     case "set-currency":
       return { ...state, currency: action.currency };
 
@@ -244,6 +275,7 @@ export function reducer(state: AppState, action: Action): AppState {
       const decksChanged = rules.decks !== state.session.rules.decks;
       return {
         ...state,
+        shoeArchive: decksChanged ? fileShoe(state, Date.now()) : state.shoeArchive,
         session: syncProgressionOptions({
           ...state.session,
           rules,
@@ -253,6 +285,9 @@ export function reducer(state: AppState, action: Action): AppState {
           shoeStartIndex: decksChanged
             ? state.session.coups.length
             : state.session.shoeStartIndex,
+          previousShoeStartIndex: decksChanged
+            ? state.session.shoeStartIndex
+            : state.session.previousShoeStartIndex,
         }),
       };
     }

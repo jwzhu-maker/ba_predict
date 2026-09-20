@@ -7,6 +7,8 @@ import {
 } from "@ba-predict/engine";
 import { useState } from "react";
 import { Card, NumberField, Stat } from "../components/Primitives";
+import ShoeReplay from "../components/ShoeReplay";
+import StrategyRecord from "../components/StrategyRecord";
 import { formatPercent, formatUnits } from "../lib/format";
 import { useAdvice, useAppState } from "../state/store";
 
@@ -66,6 +68,10 @@ export default function SimulatorScreen() {
 
   return (
     <div className="screen">
+      <StrategyRecord />
+
+      <ShoeReplay />
+
       <Card
         title="Simulate a session"
         subtitle={`20,000 sessions of ${betLabel(bet)} at your table's rules`}

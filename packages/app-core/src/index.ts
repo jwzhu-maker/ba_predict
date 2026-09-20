@@ -3,4 +3,7 @@ export * from "./storage";
 export * from "./archive";
 export * from "./currency";
 export * from "./edge";
+export * from "./replay";
+export * from "./shoe-archive";
+export * from "./strategy-record";
 export * from "./sparkline";

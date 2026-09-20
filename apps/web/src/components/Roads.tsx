@@ -77,7 +77,25 @@ export function BigRoad({ roads }: { roads: RoadSet }) {
   );
 }
 
-export function DerivedRoad({ marks, label }: { marks: readonly DerivedMark[]; label: string }) {
+/**
+ * Each derived road has its own mark, and they are not interchangeable.
+ *
+ * A casino board draws big eye boy as a hollow circle, small road as a solid
+ * one, and cockroach pig as a slash. Drawing all three as rings made the app
+ * disagree with the board a player is reading it against, which is the one
+ * thing this screen must not do.
+ */
+export type DerivedShape = "ring" | "solid" | "slash";
+
+export function DerivedRoad({
+  marks,
+  label,
+  shape,
+}: {
+  marks: readonly DerivedMark[];
+  label: string;
+  shape: DerivedShape;
+}) {
   const layout = useMemo(() => layoutDerivedRoad(marks, ROWS), [marks]);
   const columns = Math.max(1, Math.ceil(marks.length / ROWS));
   return (
@@ -85,7 +103,7 @@ export function DerivedRoad({ marks, label }: { marks: readonly DerivedMark[]; l
       {layout.map((entry, index) => (
         <span
           key={index}
-          className={`derived derived-${entry.mark}`}
+          className={`derived derived-${shape} derived-${entry.mark}`}
           style={{ gridRow: entry.row + 1, gridColumn: entry.column + 1 }}
         />
       ))}
@@ -102,10 +120,10 @@ export function DerivedRoad({ marks, label }: { marks: readonly DerivedMark[]; l
  */
 export function AskTheRoad({ roads }: { roads: RoadSet }) {
   const ask = useMemo(() => askRoads(roads), [roads]);
-  const rows = [
-    { label: "Big eye boy", player: ask.player.bigEyeBoy, banker: ask.banker.bigEyeBoy },
-    { label: "Small road", player: ask.player.smallRoad, banker: ask.banker.smallRoad },
-    { label: "Cockroach pig", player: ask.player.cockroachPig, banker: ask.banker.cockroachPig },
+  const rows: { label: string; shape: DerivedShape; player: readonly DerivedMark[]; banker: readonly DerivedMark[] }[] = [
+    { label: "Big eye boy", shape: "ring", player: ask.player.bigEyeBoy, banker: ask.banker.bigEyeBoy },
+    { label: "Small road", shape: "solid", player: ask.player.smallRoad, banker: ask.banker.smallRoad },
+    { label: "Cockroach pig", shape: "slash", player: ask.player.cockroachPig, banker: ask.banker.cockroachPig },
   ];
 
   return (
@@ -127,14 +145,14 @@ export function AskTheRoad({ roads }: { roads: RoadSet }) {
               <th scope="row">{row.label}</th>
               <td>
                 {row.player[0] ? (
-                  <span className={`derived derived-${row.player[0]}`} aria-label={row.player[0]} />
+                  <span className={`derived derived-${row.shape} derived-${row.player[0]}`} aria-label={row.player[0]} />
                 ) : (
                   <span className="muted">—</span>
                 )}
               </td>
               <td>
                 {row.banker[0] ? (
-                  <span className={`derived derived-${row.banker[0]}`} aria-label={row.banker[0]} />
+                  <span className={`derived derived-${row.shape} derived-${row.banker[0]}`} aria-label={row.banker[0]} />
                 ) : (
                   <span className="muted">—</span>
                 )}
