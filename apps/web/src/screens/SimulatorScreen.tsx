@@ -9,6 +9,8 @@ import { useState } from "react";
 import { Card, NumberField, Stat } from "../components/Primitives";
 import ShoeReplay from "../components/ShoeReplay";
 import StrategyRecord from "../components/StrategyRecord";
+import SystemRecord from "../components/SystemRecord";
+import SystemRun from "../components/SystemRun";
 import { formatPercent, formatUnits } from "../lib/format";
 import { useAdvice, useAppState } from "../state/store";
 
@@ -68,6 +70,12 @@ export default function SimulatorScreen() {
 
   return (
     <div className="screen">
+      {/* Your own rule leads, because it is the one you are actually playing.
+          The ten built-in plans below are the comparison, not the headline. */}
+      <SystemRun />
+
+      <SystemRecord />
+
       <StrategyRecord />
 
       <ShoeReplay />

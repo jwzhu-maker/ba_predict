@@ -42,6 +42,7 @@ const NAME_ROW_TABLES = [
   ["components/StrategyRecord.tsx", "Per unit"],
   ["components/ShoeReplay.tsx", "Per unit"],
   ["components/OddsTable.tsx", "House edge"],
+  ["components/SystemRun.tsx", "Net"],
 ] as const;
 
 describe("tables with a name in the row header fit a phone", () => {
@@ -86,7 +87,7 @@ describe("tables with a name in the row header fit a phone", () => {
     // files allowed to carry one is empty: every current table has a name in
     // its row header. A new table that genuinely does not needs a line here.
     const offenders: string[] = [];
-    for (const file of ["components/StrategyRecord.tsx", "components/ShoeReplay.tsx", "components/OddsTable.tsx"]) {
+    for (const [file] of NAME_ROW_TABLES) {
       if (/className="odds-table"/.test(read(file))) offenders.push(file);
     }
     expect(offenders).toEqual([]);
