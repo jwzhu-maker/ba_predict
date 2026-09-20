@@ -1,6 +1,6 @@
 import { createSession, type SessionState } from "@ba-predict/engine";
 import { describe, expect, it } from "vitest";
-import { archiveSession, lifetimeStats } from "../archive";
+import { ARCHIVE_LIMIT, archiveSession, isArchivedSession, lifetimeStats } from "../archive";
 import { createInitialState, reducer, type AppState } from "../reducer";
 import { deserializeState, serializeState } from "../storage";
 
@@ -9,21 +9,24 @@ function play(state: AppState, ...actions: Parameters<typeof reducer>[1][]): App
 }
 
 /** Bet 10 on Banker and settle it the given way. */
-function wager(outcome: "banker" | "player" | "tie") {
+function wager(outcome: "banker" | "player" | "tie", now?: number) {
   return [
     { type: "place-wager", wager: { bet: "banker", amount: 10 } },
-    { type: "record-coup", coup: { outcome } },
+    { type: "record-coup", coup: { outcome }, ...(now === undefined ? {} : { now }) },
   ] as Parameters<typeof reducer>[1][];
 }
 
 describe("archiveSession", () => {
   it("summarises a played session", () => {
-    let session: SessionState = createSession({ startedAt: 1000 });
+    const session: SessionState = createSession({ startedAt: 1000 });
     let state: AppState = { ...createInitialState(), session };
-    state = play(state, ...wager("banker"), ...wager("player"), ...wager("tie"));
+    state = play(state, ...wager("banker", 2000), ...wager("player", 3000), ...wager("tie", 4000));
 
     const archived = archiveSession(state.session, 5000)!;
-    expect(archived.startedAt).toBe(1000);
+    // Dated from the first WAGER (2000), not from when the session object was
+    // created (1000): the gap between launching the app and sitting down is
+    // not play.
+    expect(archived.startedAt).toBe(2000);
     expect(archived.endedAt).toBe(5000);
     expect(archived.wagers).toBe(3);
     expect(archived.wins).toBe(1);
@@ -186,5 +189,150 @@ describe("best and worst nights", () => {
     expect(totals.sessions).toBe(1);
     expect(totals.bestSession).toBeNull();
     expect(totals.worstSession).toBeNull();
+  });
+});
+
+/**
+ * Regressions from the first review round. Each of these was a way the app
+ * quietly understated what play had cost, which is the one direction it must
+ * not be wrong in.
+ */
+describe("a session that spans several shoes", () => {
+  it("archives every wager, not just the last shoe's", () => {
+    let state = play(createInitialState(), ...wager("banker", 10));
+    state = reducer(state, { type: "new-shoe" });
+    state = play(state, ...wager("player", 20));
+    state = reducer(state, { type: "new-shoe" });
+    state = play(state, ...wager("player", 30));
+
+    // Three shoes, three wagers, one sitting.
+    expect(state.session.coups).toHaveLength(3);
+    const archived = archiveSession(state.session, 40)!;
+    expect(archived.wagers).toBe(3);
+    expect(archived.totalWagered).toBe(30);
+    expect(archived.netProfit).toBeCloseTo(9.5 - 10 - 10, 10);
+  });
+
+  it("still files the session when a new shoe was the last thing that happened", () => {
+    let state = play(createInitialState(), ...wager("banker", 10));
+    state = reducer(state, { type: "new-shoe" });
+    // Clearing the ledger here used to make this archive nothing at all.
+    state = reducer(state, { type: "end-session", now: 50 });
+    expect(state.archive).toHaveLength(1);
+    expect(state.archive[0]!.wagers).toBe(1);
+  });
+
+  it("keeps the archived profit consistent with the bankroll that carried forward", () => {
+    let state = play(createInitialState(), ...wager("banker", 10));
+    const opening = createInitialState().session.bankroll.startingBankroll;
+    state = reducer(state, { type: "new-shoe" });
+    state = play(state, ...wager("player", 20));
+    const closing = state.session.bankroll.bankroll;
+
+    state = reducer(state, { type: "end-session", now: 30 });
+    const row = state.archive[0]!;
+    expect(row.netProfit).toBeCloseTo(closing - opening, 10);
+    expect(row.endingBankroll).toBeCloseTo(closing, 10);
+  });
+});
+
+describe("dating a session from the first wager", () => {
+  it("ignores an idle gap between opening the app and sitting down", () => {
+    const session = createSession({ startedAt: 0 });
+    let state: AppState = { ...createInitialState(), session };
+    // Six hours pass, then one wager.
+    state = play(state, ...wager("banker", 21_600_000));
+    const archived = archiveSession(state.session, 21_700_000)!;
+    expect(archived.startedAt).toBe(21_600_000);
+    expect(archived.endedAt - archived.startedAt).toBe(100_000);
+  });
+
+  it("falls back to the session's creation when nothing stamped it", () => {
+    // A session restored from storage written before the field existed.
+    const session = { ...createSession({ startedAt: 777 }), firstWagerAt: null };
+    let state: AppState = { ...createInitialState(), session };
+    state = play(state, ...wager("banker"));
+    const archived = archiveSession({ ...state.session, firstWagerAt: null }, 999)!;
+    expect(archived.startedAt).toBe(777);
+  });
+});
+
+describe("the archive cap", () => {
+  it("keeps evicted sessions in the lifetime totals", () => {
+    let state = createInitialState();
+    const rounds = ARCHIVE_LIMIT + 5;
+    for (let i = 0; i < rounds; i += 1) {
+      state = play(state, ...wager("player", i + 1));
+      state = reducer(state, { type: "end-session", now: i + 1 });
+    }
+
+    expect(state.archive).toHaveLength(ARCHIVE_LIMIT);
+    expect(state.evicted.sessions).toBe(5);
+
+    // Every session lost 10 on a losing Player bet, so the lifetime totals
+    // must still account for all of them — not just the retained window.
+    const totals = lifetimeStats(state.archive, state.session, state.evicted);
+    expect(totals.sessions).toBe(rounds);
+    expect(totals.wagers).toBe(rounds);
+    expect(totals.totalWagered).toBe(rounds * 10);
+    expect(totals.netProfit).toBeCloseTo(rounds * -10, 10);
+    expect(totals.worstSession).toBe(-10);
+  });
+
+  it("clears the evicted totals along with the archive", () => {
+    let state = createInitialState();
+    for (let i = 0; i < ARCHIVE_LIMIT + 2; i += 1) {
+      state = play(state, ...wager("player", i + 1));
+      state = reducer(state, { type: "end-session", now: i + 1 });
+    }
+    expect(state.evicted.sessions).toBeGreaterThan(0);
+    const cleared = reducer(state, { type: "clear-archive" });
+    expect(cleared.archive).toEqual([]);
+    expect(cleared.evicted.sessions).toBe(0);
+    expect(lifetimeStats(cleared.archive, undefined, cleared.evicted).totalWagered).toBe(0);
+  });
+});
+
+describe("restoring a damaged archive", () => {
+  it("recognises a well-formed row", () => {
+    let state = play(createInitialState(), ...wager("banker", 1));
+    state = reducer(state, { type: "end-session", now: 2 });
+    expect(isArchivedSession(state.archive[0])).toBe(true);
+  });
+
+  it("rejects the shapes a corrupt payload actually produces", () => {
+    expect(isArchivedSession(null)).toBe(false);
+    expect(isArchivedSession(undefined)).toBe(false);
+    expect(isArchivedSession("a session")).toBe(false);
+    expect(isArchivedSession({})).toBe(false);
+    expect(isArchivedSession({ id: "x", progression: "flat" })).toBe(false);
+    expect(isArchivedSession({ id: 1, progression: "flat", netProfit: 0 })).toBe(false);
+  });
+
+  it("drops bad rows instead of crashing the History screen", () => {
+    let state = play(createInitialState(), ...wager("banker", 1));
+    state = reducer(state, { type: "end-session", now: 2 });
+    const good = state.archive[0]!;
+
+    const restored = deserializeState(
+      JSON.stringify({ ...state, archive: [null, good, { id: "broken" }, 42] }),
+    );
+    expect(restored.archive).toEqual([good]);
+    // The screen's own maths must survive the round trip.
+    expect(() => lifetimeStats(restored.archive, restored.session, restored.evicted)).not.toThrow();
+    expect(lifetimeStats(restored.archive, undefined, restored.evicted).sessions).toBe(1);
+  });
+
+  it("restores evicted totals, and repairs a missing or malformed block", () => {
+    let state = createInitialState();
+    for (let i = 0; i < ARCHIVE_LIMIT + 3; i += 1) {
+      state = play(state, ...wager("player", i + 1));
+      state = reducer(state, { type: "end-session", now: i + 1 });
+    }
+    const restored = deserializeState(serializeState(state));
+    expect(restored.evicted).toEqual(state.evicted);
+
+    const repaired = deserializeState(JSON.stringify({ ...state, evicted: "nonsense" }));
+    expect(repaired.evicted.sessions).toBe(0);
   });
 });

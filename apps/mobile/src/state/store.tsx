@@ -123,16 +123,19 @@ export function useMoney(): MoneyFormatter {
 }
 
 export function useLifetime(): LifetimeStats {
-  const { archive, session } = useAppState();
-  return useMemo(() => lifetimeStats(archive, session), [archive, session]);
+  const { archive, evicted, session } = useAppState();
+  return useMemo(() => lifetimeStats(archive, session, evicted), [archive, evicted, session]);
 }
 
 export function useRoads(): { roads: RoadSet; summary: RoadSummary } {
   const { session } = useAppState();
   return useMemo(() => {
-    const roads = buildRoads(session.coups);
-    return { roads, summary: summariseRoads(session.coups, roads) };
-  }, [session.coups]);
+    // `coups` spans the whole session because the money does; the roads are
+    // per-shoe, so they read from where the current shoe started.
+    const shoeCoups = session.coups.slice(session.shoeStartIndex);
+    const roads = buildRoads(shoeCoups);
+    return { roads, summary: summariseRoads(shoeCoups, roads) };
+  }, [session.coups, session.shoeStartIndex]);
 }
 
 export function useStats(): SessionStats {

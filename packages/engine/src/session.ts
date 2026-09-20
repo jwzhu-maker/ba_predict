@@ -105,8 +105,29 @@ export function settleWager(
 }
 
 export interface SessionState {
-  /** Epoch ms when this session was opened. Carried so an archived session can be dated. */
+  /** Epoch ms when this session object was created. */
   startedAt: number;
+  /**
+   * Epoch ms of the first settled wager, or null while nothing has been staked.
+   *
+   * A session object is created at launch and again the moment the previous
+   * one closes, so `startedAt` measures when the object appeared, not when
+   * the sitting began. Dating an archived session from the first wager keeps
+   * an overnight gap between launching the app and sitting down out of the
+   * recorded duration.
+   */
+  firstWagerAt: number | null;
+  /**
+   * Index into `coups` where the current shoe's records begin.
+   *
+   * `coups` spans the whole SESSION, because the money does: a sitting that
+   * runs through three shoes is one session, and its archived record has to
+   * account for all of it. Clearing the list on a new shoe made
+   * `sessionStats` see only the last shoe — and nothing at all if the session
+   * ended right after a shoe change. The roads, which are per-shoe, read
+   * `coups.slice(shoeStartIndex)` instead.
+   */
+  shoeStartIndex: number;
   rules: TableRules;
   shoe: ShoeState;
   bankroll: BankrollState;
@@ -148,6 +169,8 @@ export function createSession(options: CreateSessionOptions = {}): SessionState 
   };
   return {
     startedAt: options.startedAt ?? Date.now(),
+    firstWagerAt: null,
+    shoeStartIndex: 0,
     rules,
     shoe: createShoe(rules.decks),
     bankroll,

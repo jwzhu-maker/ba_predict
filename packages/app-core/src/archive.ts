@@ -37,9 +37,13 @@ export const ARCHIVE_LIMIT = 200;
 export function archiveSession(session: SessionState, endedAt: number): ArchivedSession | null {
   const stats = sessionStats(session);
   if (stats.wagers === 0) return null;
+  // Date the sitting from the first wager. The session object may have been
+  // created at launch hours earlier, and counting that idle time as play
+  // makes the duration column fiction.
+  const startedAt = session.firstWagerAt ?? session.startedAt;
   return {
-    id: `${session.startedAt}-${endedAt}`,
-    startedAt: session.startedAt,
+    id: `${startedAt}-${endedAt}`,
+    startedAt,
     endedAt,
     progression: session.progression.id,
     startingBankroll: session.bankroll.startingBankroll,
@@ -53,6 +57,104 @@ export function archiveSession(session: SessionState, endedAt: number): Archived
     pushes: stats.pushes,
     maxDrawdown: stats.maxDrawdown,
     actualEdge: stats.actualEdge,
+  };
+}
+
+/** A numeric field of an archived session, for validation. */
+const NUMERIC_FIELDS = [
+  "startedAt",
+  "endedAt",
+  "startingBankroll",
+  "endingBankroll",
+  "netProfit",
+  "totalWagered",
+  "coups",
+  "wagers",
+  "wins",
+  "losses",
+  "pushes",
+  "maxDrawdown",
+  "actualEdge",
+] as const;
+
+/**
+ * Whether a value read back from storage is a usable archived session.
+ *
+ * Checking only that the archive is an array let a corrupt or
+ * older-schema payload through with `null` or partial entries in it, and the
+ * History screen then threw while summing them — which is exactly the crash
+ * `deserializeState` exists to prevent.
+ */
+export function isArchivedSession(value: unknown): value is ArchivedSession {
+  if (typeof value !== "object" || value === null) return false;
+  const row = value as Record<string, unknown>;
+  if (typeof row.id !== "string" || typeof row.progression !== "string") return false;
+  return NUMERIC_FIELDS.every((field) => Number.isFinite(row[field]));
+}
+
+/**
+ * Totals for sessions that have aged out of the archive.
+ *
+ * The archive is capped, but the History screen calls its numbers "lifetime".
+ * Without carrying the dropped rows forward, those figures would quietly
+ * become a rolling window at session 201 — and understating what the habit
+ * has cost is the one direction this app must not be wrong in.
+ */
+export interface EvictedTotals {
+  sessions: number;
+  netProfit: number;
+  totalWagered: number;
+  wagers: number;
+  wins: number;
+  losses: number;
+  pushes: number;
+  coups: number;
+  winningSessions: number;
+  worstDrawdown: number;
+  worstSession: number | null;
+  bestSession: number | null;
+}
+
+export const EMPTY_EVICTED: EvictedTotals = {
+  sessions: 0,
+  netProfit: 0,
+  totalWagered: 0,
+  wagers: 0,
+  wins: 0,
+  losses: 0,
+  pushes: 0,
+  coups: 0,
+  winningSessions: 0,
+  worstDrawdown: 0,
+  worstSession: null,
+  bestSession: null,
+};
+
+/** Fold a session about to be dropped into the running totals. */
+export function foldEvicted(totals: EvictedTotals, row: ArchivedSession): EvictedTotals {
+  return {
+    sessions: totals.sessions + 1,
+    netProfit: totals.netProfit + row.netProfit,
+    totalWagered: totals.totalWagered + row.totalWagered,
+    wagers: totals.wagers + row.wagers,
+    wins: totals.wins + row.wins,
+    losses: totals.losses + row.losses,
+    pushes: totals.pushes + row.pushes,
+    coups: totals.coups + row.coups,
+    winningSessions: totals.winningSessions + (row.netProfit > 0 ? 1 : 0),
+    worstDrawdown: Math.max(totals.worstDrawdown, row.maxDrawdown),
+    worstSession:
+      row.netProfit < 0
+        ? totals.worstSession === null
+          ? row.netProfit
+          : Math.min(totals.worstSession, row.netProfit)
+        : totals.worstSession,
+    bestSession:
+      row.netProfit > 0
+        ? totals.bestSession === null
+          ? row.netProfit
+          : Math.max(totals.bestSession, row.netProfit)
+        : totals.bestSession,
   };
 }
 
@@ -96,6 +198,7 @@ export interface LifetimeStats {
 export function lifetimeStats(
   archive: readonly ArchivedSession[],
   current?: SessionState,
+  evicted: EvictedTotals = EMPTY_EVICTED,
 ): LifetimeStats {
   const rows: Pick<
     ArchivedSession,
@@ -114,19 +217,20 @@ export function lifetimeStats(
     if (stats.wagers > 0) rows.push(stats);
   }
 
+  // Seeded with the sessions that have aged out, so "lifetime" stays true.
   const totals: LifetimeStats = {
-    sessions: rows.length,
-    netProfit: 0,
-    totalWagered: 0,
-    wagers: 0,
-    wins: 0,
-    losses: 0,
-    pushes: 0,
-    coups: 0,
-    winningSessions: 0,
-    worstDrawdown: 0,
-    worstSession: null,
-    bestSession: null,
+    sessions: rows.length + evicted.sessions,
+    netProfit: evicted.netProfit,
+    totalWagered: evicted.totalWagered,
+    wagers: evicted.wagers,
+    wins: evicted.wins,
+    losses: evicted.losses,
+    pushes: evicted.pushes,
+    coups: evicted.coups,
+    winningSessions: evicted.winningSessions,
+    worstDrawdown: evicted.worstDrawdown,
+    worstSession: evicted.worstSession,
+    bestSession: evicted.bestSession,
     actualEdge: 0,
   };
 
