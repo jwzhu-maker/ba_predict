@@ -22,6 +22,7 @@ import {
   type EvictedTotals,
 } from "./archive";
 import { DEFAULT_CURRENCY } from "./currency";
+import type { TableMode } from "./table-call";
 import { SHOE_ARCHIVE_LIMIT, archiveShoe, type ArchivedShoe } from "./shoe-archive";
 
 export type Screen = "table" | "roads" | "simulator" | "history" | "settings";
@@ -62,6 +63,17 @@ export interface AppState {
    * button rather than opting in.
    */
   skipNextCoup: boolean;
+  /**
+   * "observe" keeps score without ever staking.
+   *
+   * It exists because recording a result now moves money by default, and a
+   * player watching a shoe they are not betting would otherwise drain their
+   * bankroll one coup at a time, or have to press the red skip button on
+   * every single hand. The roads, the strategy record and the card tracker
+   * all still fill in — this changes nothing except whether the ledger is
+   * touched.
+   */
+  tableMode: TableMode;
   screen: Screen;
 }
 
@@ -80,6 +92,7 @@ export function createInitialState(): AppState {
     currency: DEFAULT_CURRENCY,
     activeSystem: null,
     skipNextCoup: false,
+    tableMode: "play",
     screen: "table",
   };
 }
@@ -112,6 +125,7 @@ export type Action =
   | { type: "set-currency"; currency: string }
   | { type: "set-active-system"; system: BettingSystemId | null }
   | { type: "skip-next-coup"; skip: boolean }
+  | { type: "set-table-mode"; mode: TableMode }
   | { type: "update-rules"; rules: Partial<TableRules> }
   | { type: "update-bankroll"; bankroll: Partial<BankrollState> }
   | { type: "set-progression"; progression: ProgressionId }
@@ -182,6 +196,9 @@ function closeSession(
     history: [],
     cardEntry: [],
     pendingWager: null,
+    // `skipNextCoup` is documented as per-coup; a brand-new session opening
+    // on "SITTING OUT" is the contract being broken at its widest.
+    skipNextCoup: false,
     lastSettlement: null,
     archive,
     evicted,
@@ -239,9 +256,18 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case "set-active-system":
       // A fresh system starts from a clean slate: a skip belongs to the coup
-      // it was pressed on, and a hand-placed wager was staked against the
-      // previous system's advice.
-      return { ...state, activeSystem: action.system, skipNextCoup: false };
+      // it was pressed on, and a hand-placed wager was chosen against the
+      // PREVIOUS system's advice — left in place it silently outranks the
+      // system the user just picked, on the very next coup.
+      return {
+        ...state,
+        activeSystem: action.system,
+        skipNextCoup: false,
+        pendingWager: null,
+      };
+
+    case "set-table-mode":
+      return { ...state, tableMode: action.mode, skipNextCoup: false };
 
     case "skip-next-coup":
       return {
@@ -304,6 +330,9 @@ export function reducer(state: AppState, action: Action): AppState {
         shoeArchive: fileShoe(state, action.now ?? Date.now()),
         cardEntry: [],
         pendingWager: null,
+        // The skip was for a coup in the shoe that just ended, so it must not
+        // silently sit out the first hand of the new one.
+        skipNextCoup: false,
         lastSettlement: null,
       };
 

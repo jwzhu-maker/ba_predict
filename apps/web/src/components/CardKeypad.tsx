@@ -73,6 +73,18 @@ export default function CardKeypad() {
           Clear
         </button>
       </div>
+      {/*
+        Say why the keypad has gone dead, rather than letting it read as
+        broken: a coup is at most six cards — two each, plus at most one
+        third card a side — so the seventh tap has nowhere to go.
+      */}
+      {cardEntry.length >= 6 ? (
+        <p className="field-hint field-hint-warn">
+          That is the whole coup — six cards is the most one can use (two each, plus at most one
+          third card a side). Record the result, or Backspace to correct.
+        </p>
+      ) : null}
+
       <p className="field-hint">
         Cards are applied when you record the result. Entering them is worth a fraction of a
         percent deep into a shoe — it is not what decides whether you are ahead.

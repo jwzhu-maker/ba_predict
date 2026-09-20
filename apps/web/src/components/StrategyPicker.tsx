@@ -1,5 +1,5 @@
 import { BETTING_SYSTEMS } from "@ba-predict/engine";
-import { Card, Notice } from "./Primitives";
+import { Card, Notice, Toggle } from "./Primitives";
 import { useAppState, useDispatch, useMoney } from "../state/store";
 
 /**
@@ -16,7 +16,7 @@ import { useAppState, useDispatch, useMoney } from "../state/store";
  * approach here with nothing to go wrong in it.
  */
 export default function StrategyPicker() {
-  const { activeSystem, session } = useAppState();
+  const { activeSystem, session, tableMode } = useAppState();
   const dispatch = useDispatch();
   const money = useMoney();
 
@@ -66,6 +66,24 @@ export default function StrategyPicker() {
           plan, which is what this app does when it is left to its own judgement.
         </p>
       )}
+
+      {/*
+        Observing sits with the system choice because it is the same kind of
+        decision — what this sitting is — and because the two interact: a
+        system's call still shows in observe mode, it just never settles.
+      */}
+      <Toggle
+        label="Observe only — never stake"
+        hint={
+          tableMode === "observe"
+            ? "Recording results fills the roads, the card tracker and the strategy record, and leaves your bankroll alone."
+            : "Recording a result stakes whatever the Bet card shows. Turn this on to watch a shoe without betting it."
+        }
+        checked={tableMode === "observe"}
+        onChange={(checked) =>
+          dispatch({ type: "set-table-mode", mode: checked ? "observe" : "play" })
+        }
+      />
 
       <p className="field-hint">
         Whatever is chosen here is what the <strong>Bet</strong> card on the Table tab instructs,

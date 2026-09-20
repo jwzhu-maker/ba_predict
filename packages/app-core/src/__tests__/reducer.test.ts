@@ -272,3 +272,46 @@ describe("betting the suggestion by default", () => {
     expect(state.activeSystem).toBeNull();
   });
 });
+
+describe("the skip and the system choice are per coup, not forever", () => {
+  /**
+   * `skipNextCoup` is documented as per-coup. Every transition that ends the
+   * coup it was pressed on has to clear it, or a fresh shoe — or a brand-new
+   * session — silently opens on "SITTING OUT".
+   */
+  const skipped = () => reducer(createInitialState(), { type: "skip-next-coup", skip: true });
+
+  it("clears the skip on a new shoe", () => {
+    expect(reducer(skipped(), { type: "new-shoe", now: 1 }).skipNextCoup).toBe(false);
+  });
+
+  it("clears the skip when a session ends or resets", () => {
+    expect(reducer(skipped(), { type: "end-session", now: 1 }).skipNextCoup).toBe(false);
+    expect(reducer(skipped(), { type: "reset-session" }).skipNextCoup).toBe(false);
+  });
+
+  it("drops a stale hand-placed wager when the system changes", () => {
+    // Otherwise it outranks the system the user just chose, on the very next
+    // coup, and they never see that system's first call.
+    let state = createInitialState();
+    state = reducer(state, { type: "place-wager", wager: { bet: "player", amount: 40 } });
+    state = reducer(state, { type: "set-active-system", system: "reverse-12" });
+    expect(state.pendingWager).toBeNull();
+    expect(state.activeSystem).toBe("reverse-12");
+  });
+
+  it("carries observe mode across a relaunch but never the skip", () => {
+    let state = reducer(createInitialState(), { type: "set-table-mode", mode: "observe" });
+    state = reducer(state, { type: "skip-next-coup", skip: true });
+    const restored = deserializeState(serializeState(state));
+    expect(restored.tableMode).toBe("observe");
+    expect(restored.skipNextCoup).toBe(false);
+  });
+
+  it("defaults to playing, and falls back to playing on a junk value", () => {
+    expect(createInitialState().tableMode).toBe("play");
+    expect(deserializeState('{"session":null}').tableMode).toBe("play");
+    const state = { ...createInitialState(), tableMode: "nonsense" } as unknown as AppState;
+    expect(deserializeState(serializeState(state)).tableMode).toBe("play");
+  });
+});

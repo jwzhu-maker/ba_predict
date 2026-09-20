@@ -1,7 +1,7 @@
 import { BETTING_SYSTEMS } from "@ba-predict/engine";
 import { View } from "react-native";
 import { useAppState, useDispatch, useMoney } from "../state/store";
-import { Card, Chip, Hint, Notice, Prose } from "./ui";
+import { Card, Chip, Hint, Notice, Prose, SwitchRow } from "./ui";
 
 /**
  * Choose the system to play before the first hand of the sitting.
@@ -15,7 +15,7 @@ import { Card, Chip, Hint, Notice, Prose } from "./ui";
  * advisor, recommending the cheapest bet at a flat stake.
  */
 export default function StrategyPicker() {
-  const { activeSystem, session } = useAppState();
+  const { activeSystem, session, tableMode } = useAppState();
   const dispatch = useDispatch();
   const money = useMoney();
 
@@ -59,6 +59,21 @@ export default function StrategyPicker() {
           plan, which is what this app does when it is left to its own judgement.
         </Prose>
       )}
+
+      {/* Observing sits with the system choice because it is the same kind
+          of decision — what this sitting is. */}
+      <SwitchRow
+        label="Observe only — never stake"
+        hint={
+          tableMode === "observe"
+            ? "Recording results fills the roads, the card tracker and the strategy record, and leaves your bankroll alone."
+            : "Recording a result stakes whatever the Bet card shows. Turn this on to watch a shoe without betting it."
+        }
+        value={tableMode === "observe"}
+        onChange={(checked) =>
+          dispatch({ type: "set-table-mode", mode: checked ? "observe" : "play" })
+        }
+      />
 
       <Hint>
         Whatever is chosen here is what the Bet card on the Table tab instructs, and what a

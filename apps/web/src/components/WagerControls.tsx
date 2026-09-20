@@ -1,4 +1,4 @@
-import { betLabel, type BetType } from "@ba-predict/engine";
+import { BET_TYPES, betLabel, type BetType } from "@ba-predict/engine";
 import { useState } from "react";
 import { formatPercent } from "../lib/format";
 import { useAdvice, useAppState, useDispatch, useMoney, useTableCall } from "../state/store";
@@ -17,9 +17,16 @@ import { Card } from "./Primitives";
  * +1u is invisible at the top and +5u overshoots at the bottom.
  */
 
-/** Player, Tie, Banker in table order; the rest are side bets. */
+/**
+ * Player, Tie, Banker in table order; everything else is a side bet.
+ *
+ * The second row is DERIVED, so the two together are exhaustive by
+ * construction: a ninth bet type would otherwise appear in the odds table,
+ * in `advice.valuations` and in `settleWager`'s exhaustive switch while
+ * being unreachable from the one card whose job is overriding the app.
+ */
 const PRIMARY: BetType[] = ["player", "tie", "banker"];
-const SECONDARY: BetType[] = ["playerPair", "bankerPair", "eitherPair", "big", "small"];
+const SECONDARY: BetType[] = BET_TYPES.filter((bet) => !PRIMARY.includes(bet));
 
 export default function WagerControls() {
   const { session, pendingWager } = useAppState();
@@ -91,14 +98,17 @@ export default function WagerControls() {
         {SECONDARY.map((candidate) => chip(candidate, false))}
       </div>
 
-      <div className="stepper">
+      {/* The amount gets the line to itself: four percentage buttons beside
+          it was too crowded to read the number being edited. */}
+      <output className="stake-amount">{money.format(amount)}</output>
+
+      <div className="stake-steps">
         <button type="button" className="button" onClick={() => scale(0.5)}>
           &minus;50%
         </button>
         <button type="button" className="button" onClick={() => scale(0.8)}>
           &minus;20%
         </button>
-        <output className="stepper-value">{money.format(amount)}</output>
         <button type="button" className="button" onClick={() => scale(1.2)}>
           +20%
         </button>

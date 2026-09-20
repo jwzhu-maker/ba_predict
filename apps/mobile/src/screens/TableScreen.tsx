@@ -10,6 +10,7 @@ import {
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import ShoeRoads from "../components/ShoeRoads";
+import SystemNextBet from "../components/SystemNextBet";
 import Sparkline from "../components/Sparkline";
 import { Btn, Card, Chip, Hint, Notice, Row, Stat, useStyles } from "../components/ui";
 import { callToWager, describeEdge } from "@ba-predict/app-core";
@@ -109,11 +110,13 @@ export default function TableScreen() {
 
       <View style={local.advice}>
         <Text style={local.kicker}>
-          {call.source === "manual"
-            ? "YOUR BET"
-            : call.source === "skipped"
-              ? "SITTING OUT"
-              : (call.systemName ?? "BET").toUpperCase()}
+          {advice.action === "stop"
+            ? "STOP"
+            : call.source === "manual"
+              ? "YOUR BET"
+              : call.source === "skipped"
+                ? "SITTING OUT"
+                : (call.systemName ?? "BET").toUpperCase()}
         </Text>
         {call.bet !== null ? (
           <>
@@ -136,15 +139,19 @@ export default function TableScreen() {
           </>
         )}
 
+        {/* `stakes`, not `bet`: the card can point at Player 400 while
+            observe mode, a stop or the bankroll refuses to act on it. */}
         <Text style={{ color: p.text, fontSize: 13, fontWeight: "600", marginTop: 8 }}>
-          {call.bet !== null
-            ? `Recording the result will settle ${money.format(call.amount)} on ${betLabel(call.bet)}.`
+          {call.stakes
+            ? `Recording the result will settle ${money.format(call.amount)} on ${betLabel(call.bet!)}.`
             : "Recording the result will stake nothing."}
         </Text>
 
+        {call.blockedReason ? <Notice tone="warn">{call.blockedReason}</Notice> : null}
+
         {/* The only control here: betting the suggestion is the default path,
             so the button is for the exception. */}
-        {call.bet !== null || skipNextCoup ? (
+        {call.stakes || skipNextCoup ? (
           <Btn
             label={skipNextCoup ? "Bet after all" : "I don't bet this time"}
             variant={skipNextCoup ? "primary" : "danger"}
@@ -159,12 +166,7 @@ export default function TableScreen() {
           </Notice>
         ) : null}
 
-        {call.unaffordable ? (
-          <Notice tone="warn">
-            That is more than your bankroll has left — this is the point at which the plan stops
-            being playable as written.
-          </Notice>
-        ) : null}
+
         {call.engineSizes && advice.sizingReason ? (
           <Hint>• {advice.sizingReason}</Hint>
         ) : null}
@@ -177,18 +179,26 @@ export default function TableScreen() {
         {advice.reasons.map((reason) => (
           <Hint key={reason}>• {reason}</Hint>
         ))}
-        {advice.warnings.map((warning) => (
-          <Notice key={warning} tone="warn">
-            {warning}
-          </Notice>
-        ))}
+        {/* The engine's warnings are computed from the ENGINE's stake, so
+            against a system's amount they describe money nobody is putting
+            down — the same trap `sizingReason` was pulled out of `reasons`
+            for. `blockedReason` above is the guard that does apply. */}
+        {call.engineSizes
+          ? advice.warnings.map((warning) => (
+              <Notice key={warning} tone="warn">
+                {warning}
+              </Notice>
+            ))
+          : null}
       </View>
+
+      <SystemNextBet />
 
       <Card
         title="Record the result"
         subtitle={
-          pendingWager
-            ? `${money.format(pendingWager.amount)} on ${betLabel(pendingWager.bet)}`
+          settling
+            ? `${money.format(settling.amount)} on ${betLabel(settling.bet)}`
             : "No wager on the table — this only updates the road"
         }
       >
@@ -308,12 +318,22 @@ export default function TableScreen() {
             />
           ))}
         </Row>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Btn label="−50%" onPress={() => scale(0.5)} />
-          <Btn label="−20%" onPress={() => scale(0.8)} />
-          <Text style={local.stepperValue}>{money.format(manualAmount)}</Text>
-          <Btn label="+20%" onPress={() => scale(1.2)} />
-          <Btn label="+50%" onPress={() => scale(1.5)} />
+        {/* The amount gets the line to itself: four percentage buttons
+            beside it was too crowded to read the number being edited. */}
+        <Text style={[local.stepperValue, { fontSize: 26, paddingVertical: 2 }]}>
+          {money.format(manualAmount)}
+        </Text>
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          {(
+            [
+              ["−50%", 0.5],
+              ["−20%", 0.8],
+              ["+20%", 1.2],
+              ["+50%", 1.5],
+            ] as const
+          ).map(([label, factor]) => (
+            <Btn key={label} label={label} onPress={() => scale(factor)} style={{ flex: 1 }} />
+          ))}
         </View>
         <Row>
           <Btn label="Double × 2" onPress={() => scale(2)} />
@@ -482,6 +502,14 @@ export default function TableScreen() {
             onPress={() => dispatch({ type: "clear-cards" })}
           />
         </Row>
+        {/* Say why the keypad has gone dead rather than letting it read as
+            broken: a coup is at most six cards. */}
+        {cardEntry.length >= 6 ? (
+          <Hint tone="warn">
+            That is the whole coup — six cards is the most one can use (two each, plus at most
+            one third card a side). Record the result, or Backspace to correct.
+          </Hint>
+        ) : null}
         <Hint>
           Cards are applied when you record the result. Entering them is worth a fraction of a
           percent deep into a shoe — it is not what decides whether you are ahead.

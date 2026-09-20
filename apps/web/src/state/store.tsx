@@ -238,19 +238,32 @@ export function useSystemRecord(): SystemRecord {
  * against. Null system means none is selected, and the engine answers.
  */
 export function useTableCall(): TableCall {
-  const { session, pendingWager, skipNextCoup, activeSystem } = useAppState();
+  const { session, pendingWager, skipNextCoup, activeSystem, tableMode } = useAppState();
   const advice = useAdvice();
-  const { run } = useSystemRun();
+  const { run, finished } = useSystemRun();
   return useMemo(
     () =>
       resolveTableCall({
         advice,
         run: activeSystem === null ? null : run,
+        // Without this the FINISHED shoe's ladder step is carried into the
+        // fresh one and staked against a side read from the old shoe.
+        finished,
         manualWager: pendingWager,
         skipped: skipNextCoup,
         bankroll: session.bankroll.bankroll,
+        mode: tableMode,
       }),
-    [advice, run, activeSystem, pendingWager, skipNextCoup, session.bankroll.bankroll],
+    [
+      advice,
+      run,
+      finished,
+      activeSystem,
+      pendingWager,
+      skipNextCoup,
+      session.bankroll.bankroll,
+      tableMode,
+    ],
   );
 }
 

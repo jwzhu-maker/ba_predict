@@ -1253,3 +1253,31 @@ select {
   font-size: 1.05rem;
   font-weight: 700;
 }
+
+/*
+ * The stake being edited gets its own line.
+ *
+ * Four percentage buttons plus the amount in one row left the number — the
+ * thing you are actually reading — squeezed between two pairs of controls.
+ */
+.stake-amount {
+  display: block;
+  text-align: center;
+  font-size: 1.7rem;
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 0;
+}
+
+.stake-steps {
+  display: flex;
+  gap: 6px;
+}
+
+.stake-steps .button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 10px 4px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

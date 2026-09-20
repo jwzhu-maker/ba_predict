@@ -26,10 +26,16 @@ export default function AdviceCard() {
   const { skipNextCoup } = useAppState();
 
   const betting = call.bet !== null;
-  const tone = !betting ? "neutral" : advice.action === "stop" ? "stop" : "bet";
+  // A stop is the app's most important message and it must keep its colour
+  // and its word. `betting` is false on a stop with no system running, so
+  // keying the tone off `betting` alone rendered the stop-loss card as a
+  // neutral "Bet" over a grey "No bet".
+  const stopping = advice.action === "stop";
+  const tone = stopping ? "stop" : betting ? "bet" : "neutral";
 
-  const kicker =
-    call.source === "manual"
+  const kicker = stopping
+    ? "Stop"
+    : call.source === "manual"
       ? "Your bet"
       : call.source === "skipped"
         ? "Sitting out"
@@ -61,18 +67,22 @@ export default function AdviceCard() {
         </>
       )}
 
+      {/* `stakes`, not `betting`: the card can be pointing at Player 400
+          while observe mode, a stop or the bankroll refuses to act on it. */}
       <p className="advice-settle">
-        {betting
+        {call.stakes
           ? `Recording the result will settle ${money.format(call.amount)} on ${betLabel(call.bet!)}.`
           : "Recording the result will stake nothing."}
       </p>
+
+      {call.blockedReason ? <Notice tone="warn">{call.blockedReason}</Notice> : null}
 
       {/*
         The only control here, because betting the suggestion is the default
         path and needs no confirmation. Red because it is the exception, and
         toggleable because pressing it by mistake must cost one tap.
       */}
-      {betting || skipNextCoup ? (
+      {call.stakes || skipNextCoup ? (
         <button
           type="button"
           className={`button advice-action ${skipNextCoup ? "button-primary" : "button-danger"}`}
@@ -86,13 +96,6 @@ export default function AdviceCard() {
         <Notice tone="warn">
           The ladder asks for {money.format(call.requestedAmount)} here, but the table maximum is{" "}
           {money.format(call.amount)}. The amount above is what you can actually put on.
-        </Notice>
-      ) : null}
-
-      {call.unaffordable ? (
-        <Notice tone="danger">
-          That is more than your bankroll has left &mdash; this is the point at which the plan
-          stops being playable as written.
         </Notice>
       ) : null}
 
@@ -112,11 +115,21 @@ export default function AdviceCard() {
         ) : null}
       </ul>
 
-      {advice.warnings.map((warning) => (
-        <Notice key={warning} tone="warn">
-          {warning}
-        </Notice>
-      ))}
+      {/*
+        The engine's warnings are all computed from the ENGINE's stake
+        ("this is 12% of your bankroll", "the next step needs more than the
+        table allows"), so against a system's or a hand-placed amount they
+        describe money nobody is putting down — the same trap `sizingReason`
+        was pulled out of `reasons` for. The stake-shaped guards that DO
+        apply to the call are `blockedReason` and the clip notice above.
+      */}
+      {call.engineSizes
+        ? advice.warnings.map((warning) => (
+            <Notice key={warning} tone="warn">
+              {warning}
+            </Notice>
+          ))
+        : null}
     </section>
   );
 }

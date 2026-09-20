@@ -36,15 +36,17 @@ const ADVICE: Advice = {
 const base: TableCallInput = {
   advice: ADVICE,
   run: null,
+  finished: false,
   manualWager: null,
   skipped: false,
   bankroll: 1000,
+  mode: "play",
 };
 
 describe("resolveTableCall", () => {
   it("falls back to the engine when no system is selected", () => {
     const call = resolveTableCall(base);
-    expect(call).toMatchObject({ source: "advice", bet: "banker", amount: 10 });
+    expect(call).toMatchObject({ source: "advice", bet: "banker", amount: 10, stakes: true });
     expect(callToWager(call)).toEqual({ bet: "banker", amount: 10 });
   });
 
@@ -120,17 +122,75 @@ describe("resolveTableCall", () => {
     expect(callToWager(call)).toEqual({ bet: "banker", amount: 250 });
   });
 
-  it("flags a call the bankroll cannot cover, from either source", () => {
-    expect(
-      resolveTableCall({ ...base, run: run(`${WARMUP}BBB`, { bankroll: 50 }), bankroll: 50 })
-        .unaffordable,
-    ).toBe(true);
-    expect(resolveTableCall({ ...base, bankroll: 5 }).unaffordable).toBe(true);
-    expect(
-      resolveTableCall({ ...base, manualWager: { bet: "banker", amount: 900 }, bankroll: 100 })
-        .unaffordable,
-    ).toBe(true);
+  it("refuses to stake more than the bankroll has, from any source", () => {
+    // Before opt-out this was a disabled button. There is no button now, so
+    // refusing here is the only thing standing between a $600 ladder step
+    // and a negative bankroll.
+    const poorSystem = resolveTableCall({
+      ...base,
+      run: run(`${WARMUP}BBB`, { bankroll: 50 }),
+      bankroll: 50,
+    });
+    expect(poorSystem.unaffordable).toBe(true);
+    expect(poorSystem.stakes).toBe(false);
+    expect(callToWager(poorSystem)).toBeNull();
+    // ...while still SAYING what the rule wanted.
+    expect(poorSystem.bet).toBe("banker");
+    expect(poorSystem.amount).toBe(400);
+    expect(poorSystem.blockedReason).toMatch(/bankroll/i);
+
+    const poorManual = resolveTableCall({
+      ...base,
+      manualWager: { bet: "banker", amount: 900 },
+      bankroll: 100,
+    });
+    expect(poorManual.stakes).toBe(false);
+    expect(callToWager(poorManual)).toBeNull();
+
     expect(resolveTableCall(base).unaffordable).toBe(false);
+    expect(resolveTableCall(base).stakes).toBe(true);
+  });
+
+  it("stakes nothing once the shoe the system ran on is finished", () => {
+    // Otherwise "New shoe" carries the finished shoe's ladder step into the
+    // fresh one and stakes it against a side read from the old shoe.
+    const call = resolveTableCall({ ...base, run: run(`${WARMUP}BBB`), finished: true });
+    expect(call.bet).toBeNull();
+    expect(call.stakes).toBe(false);
+    expect(callToWager(call)).toBeNull();
+    expect(call.noBetReason).toMatch(/finished/i);
+    // The same run on a live shoe is a real call.
+    expect(resolveTableCall({ ...base, run: run(`${WARMUP}BBB`) }).amount).toBe(400);
+  });
+
+  it("refuses to stake past the engine's stop, even with a system running", () => {
+    // The system branch used to return before the engine was consulted, so
+    // selecting a system quietly switched the stop-loss off.
+    for (const action of ["stop", "shuffle"] as const) {
+      const advice = { ...ADVICE, action, bet: null } as unknown as Advice;
+      const call = resolveTableCall({ ...base, advice, run: run(WARMUP) });
+      expect(call.bet).toBe("banker");
+      expect(call.amount).toBe(100);
+      expect(call.stakes).toBe(false);
+      expect(callToWager(call)).toBeNull();
+      expect(call.blockedReason).toBeTruthy();
+    }
+  });
+
+  it("observe mode keeps score and never stakes, whatever is speaking", () => {
+    const inputs: TableCallInput[] = [
+      base,
+      { ...base, run: run(WARMUP) },
+      { ...base, manualWager: { bet: "player", amount: 40 } },
+    ];
+    for (const input of inputs) {
+      const call = resolveTableCall({ ...input, mode: "observe" });
+      expect(call.stakes).toBe(false);
+      expect(callToWager(call)).toBeNull();
+      expect(call.blockedReason).toMatch(/observ/i);
+      // ...and still says what it would have done.
+      expect(call.bet).not.toBeNull();
+    }
   });
 
   it("stakes nothing when the engine itself says not to bet", () => {
@@ -141,8 +201,11 @@ describe("resolveTableCall", () => {
       });
       expect(call.bet).toBeNull();
       expect(call.amount).toBe(0);
+      expect(call.stakes).toBe(false);
       expect(callToWager(call)).toBeNull();
-      expect(call.noBetReason).toMatch(/stake nothing/);
+      // "Recording will stake nothing" is the CARD's line now; the reason
+      // says why the app is pointing at nothing.
+      expect(call.noBetReason).toBeTruthy();
     }
   });
 
@@ -181,11 +244,19 @@ describe("resolveTableCall", () => {
       if (call.bet === null) {
         expect(call.amount).toBe(0);
         expect(call.noBetReason).toBeTruthy();
+        expect(call.stakes).toBe(false);
         expect(callToWager(call)).toBeNull();
       } else {
         expect(call.amount).toBeGreaterThan(0);
         expect(call.noBetReason).toBeNull();
-        expect(callToWager(call)).toEqual({ bet: call.bet, amount: call.amount });
+        // A live instruction either stakes, or says why it does not.
+        if (call.stakes) {
+          expect(call.blockedReason).toBeNull();
+          expect(callToWager(call)).toEqual({ bet: call.bet, amount: call.amount });
+        } else {
+          expect(call.blockedReason).toBeTruthy();
+          expect(callToWager(call)).toBeNull();
+        }
       }
     }
   });

@@ -4,6 +4,7 @@ import CardKeypad from "../components/CardKeypad";
 import CoupEntry from "../components/CoupEntry";
 import OddsTable from "../components/OddsTable";
 import ShoeRoads from "../components/ShoeRoads";
+import SystemNextBet from "../components/SystemNextBet";
 import { Card, Stat } from "../components/Primitives";
 import Sparkline from "../components/Sparkline";
 import WagerControls from "../components/WagerControls";
@@ -20,6 +21,7 @@ export default function TableScreen() {
     <div className="screen">
       <BankrollBar />
       <AdviceCard />
+      <SystemNextBet />
       <CoupEntry />
       <ShoeRoads />
       <WagerControls />

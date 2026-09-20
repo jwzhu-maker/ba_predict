@@ -26,9 +26,17 @@ export default function BankrollBar() {
         number twice on one screen; what stays is the detail the header has
         no room for.
       */}
-      <p className="bankroll-meta bankroll-meta-top">
-        {profit >= 0 ? "Toward your stop-win" : "Toward your stop-loss"}
-      </p>
+      {/* Naming a target the user set to 0 (which disables it) explains an
+          empty meter as "no progress" when it means "no limit". */}
+      {(profit >= 0 ? stopWin : stopLoss) ? (
+        <p className="bankroll-meta bankroll-meta-top">
+          {profit >= 0 ? "Toward your stop-win" : "Toward your stop-loss"}
+        </p>
+      ) : (
+        <p className="bankroll-meta bankroll-meta-top">
+          No {profit >= 0 ? "stop-win" : "stop-loss"} set
+        </p>
+      )}
 
       <div
         className={`bankroll-meter ${profit >= 0 ? "meter-good" : "meter-bad"}`}
