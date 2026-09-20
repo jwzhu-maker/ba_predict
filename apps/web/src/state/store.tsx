@@ -188,7 +188,7 @@ export function useStrategyRecord(): StrategyRecord {
  * next bet applies to a shoe that is over.
  */
 export function useSystemRun(): { run: SystemRun; finished: boolean } {
-  const { session } = useAppState();
+  const { session, activeSystem } = useAppState();
   return useMemo(() => {
     const current = session.coups.slice(session.shoeStartIndex);
     const previous =
@@ -201,6 +201,10 @@ export function useSystemRun(): { run: SystemRun; finished: boolean } {
       finished,
       run: runBettingSystem({
         coups,
+        // The system the player chose, not whichever is listed first. With
+        // one system those were the same value; with two, passing nothing
+        // stakes Reverse 12's ladder under Reverse Streak 4's name.
+        system: activeSystem,
         rules: session.rules,
         tableMax: session.bankroll.tableMax > 0 ? session.bankroll.tableMax : null,
         // Only the NEXT bet is judged against the balance; the replay behind
@@ -209,6 +213,7 @@ export function useSystemRun(): { run: SystemRun; finished: boolean } {
       }),
     };
   }, [
+    activeSystem,
     session.coups,
     session.shoeStartIndex,
     session.previousShoeStartIndex,
@@ -220,16 +225,27 @@ export function useSystemRun(): { run: SystemRun; finished: boolean } {
 
 /** The same system totalled over every shoe this device has kept. */
 export function useSystemRecord(): SystemRecord {
-  const { session, shoeArchive } = useAppState();
+  const { session, shoeArchive, activeSystem } = useAppState();
   return useMemo(
     () =>
       aggregateSystemRecord({
         shoes: shoeArchive,
         currentShoe: session.coups.slice(session.shoeStartIndex),
+        // Every kept shoe is re-read under the system on screen now. The
+        // archive stores coups, not stakes, so this is the record of the
+        // chosen system over that history rather than of what was played.
+        system: activeSystem,
         rules: session.rules,
         tableMax: session.bankroll.tableMax > 0 ? session.bankroll.tableMax : null,
       }),
-    [shoeArchive, session.coups, session.shoeStartIndex, session.rules, session.bankroll.tableMax],
+    [
+      activeSystem,
+      shoeArchive,
+      session.coups,
+      session.shoeStartIndex,
+      session.rules,
+      session.bankroll.tableMax,
+    ],
   );
 }
 

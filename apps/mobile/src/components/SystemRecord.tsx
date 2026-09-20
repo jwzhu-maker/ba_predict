@@ -5,15 +5,19 @@ import { usePalette } from "../theme";
 import { Card, Hint, Notice, Prose, Row, Stat, useStyles } from "./ui";
 
 /**
- * Reverse 12 across every shoe this device has kept.
+ * The selected system across every shoe this device has kept.
  *
  * The single-shoe card answers "what did it make me tonight". This answers
  * "does it work", which needs a lot more than one shoe.
  *
  * Read "Shoes ahead" against "Per unit", the same pairing the staking-plan
- * record exists to show. This rule stakes on about a third of the hands a
- * flat bettor would, so it loses less MONEY per shoe — and the same RATE,
- * because when you bet has never changed what a bet costs.
+ * record exists to show. Those two move in opposite directions between the
+ * systems on offer and the rate does not move at all, which is the lesson.
+ *
+ * Every kept shoe is replayed under whichever system is selected NOW, not
+ * under whatever was selected while it was dealt — the archive holds coups,
+ * not stakes. That is what makes switching systems a fair comparison rather
+ * than a mixture of two records.
  */
 export default function SystemRecord() {
   const record = useSystemRecord();
@@ -23,10 +27,10 @@ export default function SystemRecord() {
 
   if (record.shoesWithBets === 0) {
     return (
-      <Card title="Reverse 12 record" subtitle="Builds up as you finish shoes">
+      <Card title={`${record.name} record`} subtitle="Builds up as you finish shoes">
         <Prose>
-          Every shoe you finish gets replayed through your rule. After a few dozen this shows how
-          often it finishes a shoe ahead, and what it costs per unit staked.
+          Every shoe you finish gets replayed through {record.name}. After a few dozen this shows
+          how often it finishes a shoe ahead, and what it costs per unit staked.
         </Prose>
       </Card>
     );
@@ -36,7 +40,7 @@ export default function SystemRecord() {
 
   return (
     <Card
-      title="Reverse 12 record"
+      title={`${record.name} record`}
       subtitle={`${record.shoesWithBets} shoe${record.shoesWithBets === 1 ? "" : "s"} played, ${record.bets} bets`}
     >
       <View style={{ flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", gap: 10 }}>
@@ -96,11 +100,10 @@ export default function SystemRecord() {
       ) : null}
 
       <Hint>
-        Read Shoes ahead against Per unit. The rule wins a minority of shoes and loses small on
-        most of them, then occasionally runs a group clean and wins big — the mirror image of a
-        Martingale, which wins nearly every shoe and loses everything on one. Per unit staked the
-        two cost the same, because sitting out hands changes how much you bet, never what a bet
-        costs.
+        Read Shoes ahead against Per unit. Switch the system above and both of the first two
+        numbers will move — a rule that sits out most hands wins fewer shoes by more, one that
+        backs every hand wins more shoes by less. The third will not: per unit staked they cost
+        the same, because when and how much you bet has never changed what a bet costs.
       </Hint>
     </Card>
   );

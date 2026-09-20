@@ -1235,6 +1235,20 @@ select {
 }
 
 /*
+ * Two lines reserved, because this line's LENGTH changes every coup and the
+ * whole Table tab sits under it.
+ *
+ * "33 wagers · 11.21% cost" wraps at 320px and "35 wagers · 7.86% cost"
+ * does not — one character's difference — so the bar breathed 17px in and
+ * out on alternate hands and took the Record buttons with it. That is the
+ * same defect the two card floors below exist to stop, one element higher
+ * up the page.
+ */
+.bankroll-meta-bottom {
+  min-height: 3em;
+}
+
+/*
  * Player / Tie / Banker get their own row, in the order they sit on the
  * felt, and the two real bets get the tap target their use deserves — Tie is
  * a 14.4% house edge and does not need to be as easy to hit as Banker's
@@ -1340,25 +1354,43 @@ select {
  *
  * Measured maxima with the reasoning folded (tallest state, per width):
  *
- *     320px   advice 389   says 207
- *     360px   advice 370   says 191
- *     390px   advice 352   says 191
- *     430px   advice 352   says 191
+ *     320px   advice 395   says 260
+ *     360px   advice 370   says 227
+ *     375px   advice 358   says 227
+ *     390px   advice 352   says 227
+ *     430px   advice 352   says 227
  *
- * The reservations carry ~30px over the widest measurement, because a state
+ * The reservations carry ~25px over the widest measurement, because a state
  * that overflows the floor puts the movement straight back. Re-derive them
  * if either card gains a row; the cost is whitespace in the short states,
  * which is the trade being asked for.
+ *
+ * The system card's floor was first derived without ever recording a TIE,
+ * and its reconciliation line — the one that says which coup on the board
+ * the rule's hand number is — appeared only once one had been dealt. So the
+ * card grew 73px mid-shoe and moved the Record buttons out from under the
+ * thumb reaching for them, which is the whole thing this block exists to
+ * stop. The line is now rendered on every hand (`tieReconciliation`), one
+ * clause long, and the floor below covers it.
+ *
+ * 320px gets a tier of its own because only there does the card need a
+ * fourth line; giving 360px the same floor would waste 33px on the width
+ * most phones actually are.
  */
 :root {
   --advice-min-height: 385px;
-  --system-card-min-height: 200px;
+  --system-card-min-height: 245px;
 }
 
 @media (max-width: 375px) {
   :root {
     --advice-min-height: 420px;
-    --system-card-min-height: 220px;
+  }
+}
+
+@media (max-width: 340px) {
+  :root {
+    --system-card-min-height: 275px;
   }
 }
 

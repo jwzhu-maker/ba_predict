@@ -1,4 +1,4 @@
-import { readSystemNext } from "@ba-predict/app-core";
+import { nextHandDetail, readSystemNext, tieReconciliation } from "@ba-predict/app-core";
 import { Text, View } from "react-native";
 import { useAppState, useMoney, useSystemRun } from "../state/store";
 import { usePalette } from "../theme";
@@ -55,6 +55,8 @@ export default function SystemNextBet() {
         </Prose>
       );
     }
+    // Only a system whose groups gate play can reach this; Reverse Streak
+    // 4 never sits a hand out once it has started.
     if (next.skipped === "group-over") {
       if (reading.resumesAtHand === null) {
         return (
@@ -89,11 +91,10 @@ export default function SystemNextBet() {
             {money.format(next.stake)}
           </Text>
         </View>
-        <Hint>
-          Hand {next.hand} · group {next.group}, bet {next.step} of {run.config.groupSize} ·
-          mirroring hand {next.referenceHand}
-          {next.step === 1 ? " · fresh group, back to the base stake" : ""}
-        </Hint>
+        {/* Shared with the Bet card's own detail line, and shaped by the
+            system: a group step is the ladder rung on Reverse 12 and is not
+            on Reverse Streak 4, where a loss resets one and not the other. */}
+        <Hint>{nextHandDetail(run)}</Hint>
       </View>
     );
   };
@@ -107,12 +108,10 @@ export default function SystemNextBet() {
       subtitle={finished ? "Last shoe" : `Hand ${next.hand} of this shoe, ties not counted`}
     >
       {body()}
-      {run.tiesRemoved > 0 && !finished ? (
-        <Hint>
-          {run.tiesRemoved} tie{run.tiesRemoved === 1 ? "" : "s"} recorded and not counted, so this
-          is hand {next.hand} of the rule but coup {run.tiesRemoved + next.hand} of the shoe.
-        </Hint>
-      ) : null}
+      {/* Rendered on every hand, including before the first tie: appearing
+          only once a tie was dealt made the card grow mid-shoe and moved the
+          Record buttons under the thumb reaching for them. */}
+      {finished ? null : <Hint>{tieReconciliation(run)}</Hint>}
       {run.approximate ? (
         <Notice tone="warn">
           Your table pays a reduced rate on a Banker win with 6, which recorded coups do not

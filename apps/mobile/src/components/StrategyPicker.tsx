@@ -1,3 +1,4 @@
+import { describeBetRate, describeSystemRules } from "@ba-predict/app-core";
 import { BETTING_SYSTEMS } from "@ba-predict/engine";
 import { View } from "react-native";
 import { useAppState, useDispatch, useMoney } from "../state/store";
@@ -45,13 +46,7 @@ export default function StrategyPicker() {
 
       {active ? (
         <Prose>
-          {active.name}. {active.summary} Watch {active.defaults.lookback} hands, then from hand{" "}
-          {active.defaults.lookback + 1} back the opposite of the hand {active.defaults.lookback}{" "}
-          before it. Groups of {active.defaults.groupSize}, opening at{" "}
-          {money.format(active.defaults.baseStake)} and adding{" "}
-          {money.format(active.defaults.stakeStep)} after each win, stopping the group on its
-          first loss and the shoe after hand {active.defaults.lastHand}. Ties are deleted before
-          any of that is counted.
+          {active.name}. {describeSystemRules(active.defaults, money)}
         </Prose>
       ) : (
         <Prose>
@@ -59,6 +54,19 @@ export default function StrategyPicker() {
           plan, which is what this app does when it is left to its own judgement.
         </Prose>
       )}
+
+      {/*
+        The one number that separates the systems on offer, derived rather
+        than written out: 16 hands or 48. A comparison paragraph naming them
+        would be wrong the day a third is added.
+      */}
+      {active && describeBetRate(active.defaults) ? (
+        <Hint>
+          {describeBetRate(active.defaults)} Staking more does not cost more per unit — how often
+          you bet has never changed what a bet costs — but it does mean bigger swings either way,
+          and a bigger total loss at the same rate.
+        </Hint>
+      ) : null}
 
       {/* Observing sits with the system choice because it is the same kind
           of decision — what this sitting is. */}

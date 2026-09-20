@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_RULES } from "../types";
 import type { CoupRecord, Outcome } from "../types";
-import { REVERSE_TWELVE_CONFIG, runBettingSystem } from "../systems";
+import {
+  BETTING_SYSTEMS,
+  REVERSE_STREAK_FOUR_CONFIG,
+  REVERSE_TWELVE_CONFIG,
+  bettingSystemById,
+  runBettingSystem,
+} from "../systems";
 
 /**
  * "P" player, "B" banker, "T" tie. Whitespace is ignored so a 60-hand shoe
@@ -419,6 +425,180 @@ describe("Reverse 12", () => {
       baseStake: 100,
       stakeStep: 100,
       lastHand: 60,
+      groupsGateBetting: true,
+      maxLadderSteps: 6,
     });
+  });
+
+  it("never reaches its ladder cap, because the group ends first", () => {
+    // `maxLadderSteps` is 6 here only so the number is honest. A seventh
+    // consecutive win inside a group of six does not exist, so the cap can
+    // never fire — which is what keeps this system's behaviour unchanged by
+    // a field added for the other one.
+    const result = run(`${WARMUP}BBBBBB`);
+    expect(result.hands.slice(12).map((hand) => hand.stake)).toEqual([
+      100, 200, 300, 400, 500, 600,
+    ]);
+    // Hand 19 opens group 2, which resets regardless.
+    expect(run(`${WARMUP}BBBBBBB`).hands[18]!.stake).toBe(100);
+  });
+});
+
+/**
+ * The second system: the same mirror, played on every hand, with a ladder
+ * that resets after four wins as well as after any loss.
+ *
+ * Everything it shares with Reverse 12 is covered above. What is tested here
+ * is only the two things that differ — that no hand inside the range is sat
+ * out, and where the ladder resets.
+ */
+describe("Reverse Streak 4", () => {
+  const streak = (pattern: string, overrides = {}) =>
+    runBettingSystem({
+      coups: coups(pattern),
+      rules: DEFAULT_RULES,
+      system: "reverse-streak-4",
+      ...overrides,
+    });
+
+  it("keeps the specified defaults", () => {
+    expect(REVERSE_STREAK_FOUR_CONFIG).toEqual({
+      lookback: 12,
+      groupSize: 6,
+      baseStake: 100,
+      stakeStep: 100,
+      lastHand: 60,
+      groupsGateBetting: false,
+      maxLadderSteps: 4,
+    });
+  });
+
+  it("still watches the first twelve hands", () => {
+    const result = streak(WARMUP);
+    expect(result.bets).toBe(0);
+    expect(result.hands.every((hand) => hand.skipped === "warm-up")).toBe(true);
+    // Twelve hands recorded means the NEXT one is 13, which is live.
+    expect(result.next).toMatchObject({ hand: 13, skipped: null, stake: 100, ladderStep: 1 });
+    expect(streak(WARMUP.slice(0, 11)).next.skipped).toBe("warm-up");
+  });
+
+  it("climbs a step per win and drops to the base after the fourth", () => {
+    // Every reference hand is Player, so the bet is always Banker and every
+    // Banker result wins. Five straight wins: 100, 200, 300, 400, then back
+    // to 100 however the fourth went.
+    const result = streak(`${WARMUP}BBBBB`);
+    expect(result.hands.slice(12).map((hand) => hand.stake)).toEqual([100, 200, 300, 400, 100]);
+    expect(result.hands.slice(12).every((hand) => hand.result === "win")).toBe(true);
+    expect(result.bets).toBe(5);
+    expect(result.staked).toBe(1100);
+    // Banker pays 0.95, so five wins on 1,100 return 1,045 rather than 1,100.
+    expect(result.net).toBeCloseTo(1045, 6);
+  });
+
+  it("climbs again from the reset rather than stopping there", () => {
+    // 100, 200, 300, 400, 100, 200 — the sixth hand is the one an
+    // "after four, flat forever" reading would have staked at 100.
+    const result = streak(`${WARMUP}BBBBBB`);
+    expect(result.hands.slice(12).map((hand) => hand.stake)).toEqual([
+      100, 200, 300, 400, 100, 200,
+    ]);
+  });
+
+  it("returns to the base on the hand after any loss", () => {
+    const result = streak(`${WARMUP}BBPB`);
+    expect(result.hands.slice(12).map((hand) => hand.stake)).toEqual([100, 200, 300, 100]);
+    expect(result.hands.slice(12).map((hand) => hand.result)).toEqual([
+      "win",
+      "win",
+      "loss",
+      "win",
+    ]);
+    // 95 + 190 - 300 + 95
+    expect(result.net).toBeCloseTo(80, 6);
+  });
+
+  it("bets every hand in the range, so a group never dies", () => {
+    const result = streak(`${WARMUP}BBPPPP`);
+    expect(result.bets).toBe(6);
+    expect(result.hands.slice(12).every((hand) => hand.skipped === null)).toBe(true);
+    const [group] = result.groups;
+    expect(group).toMatchObject({ group: 1, bets: 6, wins: 2, lostAt: 15, perfect: false });
+    // The same hands under Reverse 12 stop dead at the first loss.
+    expect(run(`${WARMUP}BBPPPP`).bets).toBe(3);
+  });
+
+  it("carries the ladder across a group boundary", () => {
+    // Hand 19 opens group 2 with two wins already banked, so it stakes 300 —
+    // where Reverse 12 would reopen at 100.
+    const result = streak(`${WARMUP}BBBBBBB`);
+    expect(result.hands[18]!.stake).toBe(300);
+    expect(result.hands[18]!.group).toBe(2);
+    expect(result.hands[18]!.step).toBe(1);
+    expect(run(`${WARMUP}BBBBBBB`).hands[18]!.stake).toBe(100);
+  });
+
+  it("names a clean group only when all six were won", () => {
+    expect(streak(`${WARMUP}BBBBBB`).perfectGroups).toBe(1);
+    expect(streak(`${WARMUP}BBPBBB`).perfectGroups).toBe(0);
+  });
+
+  it("never sits a hand out once it has started", () => {
+    // 48 hands in the range and 48 bets, which is the whole of "no hand will
+    // have no stake".
+    const shoe = `${WARMUP}${"BP".repeat(24)}`;
+    const result = streak(shoe);
+    expect(result.handsAvailable).toBe(60);
+    expect(result.bets).toBe(48);
+    expect(result.hands.filter((hand) => hand.skipped === "group-over")).toHaveLength(0);
+    expect(result.next.skipped).toBe("past-last-hand");
+  });
+
+  it("reports the ladder rung, which is not the group step", () => {
+    // Group step 4, ladder rung 2: the loss on hand 15 reset one and not the
+    // other, and a card that showed `step` as the stake's position would be
+    // naming 400 above a 200 bet.
+    const next = streak(`${WARMUP}BBPB`).next;
+    expect(next).toMatchObject({ hand: 17, group: 1, step: 5, ladderStep: 2, stake: 200 });
+  });
+
+  it("resets the reading after a fourth win", () => {
+    const next = streak(`${WARMUP}BBBB`).next;
+    expect(next).toMatchObject({ hand: 17, ladderStep: 1, stake: 100 });
+  });
+});
+
+describe("system selection", () => {
+  it("runs the system it is given, not the first one in the list", () => {
+    const pattern = `${WARMUP}BBPPPP`;
+    expect(runBettingSystem({ coups: coups(pattern), rules: DEFAULT_RULES, system: "reverse-12" }).bets).toBe(3);
+    expect(
+      runBettingSystem({ coups: coups(pattern), rules: DEFAULT_RULES, system: "reverse-streak-4" })
+        .bets,
+    ).toBe(6);
+  });
+
+  it("names itself, so a card cannot label one system's numbers with another's", () => {
+    expect(runBettingSystem({ coups: [], rules: DEFAULT_RULES, system: "reverse-streak-4" })).toMatchObject(
+      { id: "reverse-streak-4", name: "Reverse Streak 4" },
+    );
+  });
+
+  it("falls back to the default for a missing or unknown id", () => {
+    expect(bettingSystemById(null).id).toBe("reverse-12");
+    expect(bettingSystemById(undefined).id).toBe("reverse-12");
+    // A stored id from a build that had a system this one does not.
+    expect(bettingSystemById("retired-thing" as never).id).toBe("reverse-12");
+    expect(runBettingSystem({ coups: [], rules: DEFAULT_RULES }).id).toBe("reverse-12");
+  });
+
+  it("gives every listed system a distinct id and its own defaults", () => {
+    const ids = BETTING_SYSTEMS.map((system) => system.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const system of BETTING_SYSTEMS) {
+      expect(bettingSystemById(system.id)).toBe(system);
+      expect(runBettingSystem({ coups: [], rules: DEFAULT_RULES, system: system.id }).config).toEqual(
+        system.defaults,
+      );
+    }
   });
 });

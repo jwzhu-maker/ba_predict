@@ -1,11 +1,25 @@
-import { runBettingSystem, type CoupRecord, type Outcome, DEFAULT_RULES } from "@ba-predict/engine";
+import {
+  DEFAULT_RULES,
+  REVERSE_STREAK_FOUR_CONFIG,
+  REVERSE_TWELVE_CONFIG,
+  runBettingSystem,
+  type CoupRecord,
+  type Outcome,
+} from "@ba-predict/engine";
 import { describe, expect, it } from "vitest";
 import {
   bettableHands,
+  describeBetRate,
+  describeSystemRules,
+  expectedBetsPerGroup,
+  handsInRange,
+  nextHandDetail,
   oddsOfCleanGroup,
   oddsOfReachingTopStep,
-  readSystemNext,
+  tieReconciliation,
+  topStake,
 } from "../system-copy";
+import { readSystemNext } from "../system-copy";
 
 function coups(pattern: string): CoupRecord[] {
   return [...pattern.replace(/\s+/g, "")].map((char) => {
@@ -137,5 +151,127 @@ describe("ladder odds", () => {
     expect(cleanRate).toBeLessThan(oddsOfCleanGroup(6) * 1.35);
     // And the two really are different events, roughly two to one.
     expect(reachedTop).toBeGreaterThan(clean);
+  });
+});
+
+const money = { format: (value: number) => `$${value}` };
+
+const streak = (pattern: string, extra = {}) =>
+  runBettingSystem({
+    coups: coups(pattern),
+    rules: DEFAULT_RULES,
+    system: "reverse-streak-4" as const,
+    ...extra,
+  });
+
+describe("system copy", () => {
+  it("describes the rule from the config, not from memory", () => {
+    const gated = describeSystemRules(REVERSE_TWELVE_CONFIG, money);
+    expect(gated).toContain("Groups of 6");
+    expect(gated).toContain("stopping the group on its first loss");
+    expect(gated).toContain("stops after hand 60");
+
+    const open = describeSystemRules(REVERSE_STREAK_FOUR_CONFIG, money);
+    expect(open).toContain("Every hand after that carries a stake");
+    // The top of the ladder is derived, so a changed cap cannot leave the
+    // paragraph naming a stake the rule will never ask for.
+    expect(open).toContain("up to $400");
+    expect(open).toContain("after a fourth straight win");
+    expect(open).not.toContain("stopping the group");
+  });
+
+  it("says a rule with no last hand runs to the end of the shoe", () => {
+    expect(describeSystemRules({ ...REVERSE_TWELVE_CONFIG, lastHand: null }, money)).toContain(
+      "runs to the end of the shoe",
+    );
+  });
+
+  it("puts the top of the ladder where the cap is", () => {
+    expect(topStake(REVERSE_TWELVE_CONFIG)).toBe(600);
+    expect(topStake(REVERSE_STREAK_FOUR_CONFIG)).toBe(400);
+  });
+
+  it("prices the top step off the ladder cap, not the group", () => {
+    // The trap: at six these are the same number, so passing `groupSize`
+    // looks right until a system caps its ladder below its group.
+    expect(oddsOfReachingTopStep(REVERSE_TWELVE_CONFIG.maxLadderSteps)).toBe(32);
+    expect(oddsOfReachingTopStep(REVERSE_STREAK_FOUR_CONFIG.maxLadderSteps)).toBe(8);
+  });
+
+  it("counts the hands each rule actually stakes", () => {
+    expect(handsInRange(REVERSE_TWELVE_CONFIG)).toBe(48);
+    // Bets until the first loss, capped at six: 2(1 - 1/64).
+    expect(expectedBetsPerGroup(REVERSE_TWELVE_CONFIG)).toBeCloseTo(1.96875, 6);
+    expect(expectedBetsPerGroup(REVERSE_STREAK_FOUR_CONFIG)).toBe(6);
+
+    expect(describeBetRate(REVERSE_TWELVE_CONFIG)).toBe(
+      "On a full shoe it stakes about 16 of the 48 hands from 13 to 60 and sits out the rest.",
+    );
+    expect(describeBetRate(REVERSE_STREAK_FOUR_CONFIG)).toBe(
+      "On a full shoe it stakes every one of the 48 hands from 13 to 60.",
+    );
+    expect(describeBetRate({ ...REVERSE_TWELVE_CONFIG, lastHand: null })).toBeNull();
+  });
+
+  it("matches the measured bet rate over many shoes", () => {
+    // The formula above against the loop it describes, because a wrong
+    // constant here is a number on the strategy picker nobody would check.
+    let seed = 0x5eed >>> 0;
+    const random = () => {
+      seed = (seed + 0x6d2b79f5) >>> 0;
+      let t = seed;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    let bets = 0;
+    let shoes = 0;
+    for (let shoe = 0; shoe < 800; shoe += 1) {
+      let pattern = "";
+      for (let index = 0; index < 80; index += 1) {
+        const roll = random();
+        pattern += roll < 0.4586 ? "B" : roll < 0.9048 ? "P" : "T";
+      }
+      const result = run(pattern);
+      if (result.incomplete) continue;
+      bets += result.bets;
+      shoes += 1;
+    }
+    const measured = bets / shoes;
+    const predicted = (48 / 6) * expectedBetsPerGroup(REVERSE_TWELVE_CONFIG);
+    expect(measured).toBeGreaterThan(predicted * 0.9);
+    expect(measured).toBeLessThan(predicted * 1.1);
+  });
+
+  it("gives each system the detail line that is true of it", () => {
+    // Reverse 12: the group step IS the ladder rung.
+    expect(nextHandDetail(run(`${WARMUP}BB`))).toBe(
+      "Hand 15 · group 1, bet 3 of 6 · mirroring hand 3",
+    );
+
+    // Reverse Streak 4: hand 15 is group step 3 and ladder rung 1, because
+    // hand 14 was lost. A line naming "bet 3 of 6" beside a 100 stake would
+    // be pointing at the wrong number.
+    expect(nextHandDetail(streak(`${WARMUP}BP`))).toBe(
+      "Hand 15 · ladder step 1 of 4 · mirroring hand 3",
+    );
+    expect(nextHandDetail(streak(`${WARMUP}BB`))).toBe(
+      "Hand 15 · ladder step 3 of 4 · mirroring hand 3",
+    );
+  });
+
+  it("has no detail line for a hand with no bet", () => {
+    expect(nextHandDetail(run("PPP"))).toBeNull();
+    expect(nextHandDetail(streak("PPP"))).toBeNull();
+  });
+
+  it("puts the coup number on the board on every hand, tie or no tie", () => {
+    // Always present, and the same shape either way — the card reserves
+    // room for this line, so it must not appear and disappear.
+    expect(tieReconciliation(run(`${WARMUP}BB`))).toBe("Coup 15 on the board — no ties yet.");
+    expect(tieReconciliation(run(`${WARMUP}BTB`))).toBe("Coup 16 on the board — 1 tie not counted.");
+    expect(tieReconciliation(run(`${WARMUP}TBTB`))).toBe("Coup 17 on the board — 2 ties not counted.");
+    // Hand 15 of the rule, coup 17 of the shoe: the whole point of the line.
+    expect(run(`${WARMUP}TBTB`).next.hand).toBe(15);
   });
 });

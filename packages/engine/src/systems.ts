@@ -14,6 +14,13 @@ import { settleWager } from "./session";
  * That third one is what a progression cannot express, and it is most of
  * what makes a system feel like a system to the person playing it.
  *
+ * Both systems here share rule 1 and differ on 2 and 3, which is why they
+ * are one loop with two configs rather than two loops. Reverse 12 plays in
+ * groups of six and sits out the rest of a group it has lost; Reverse Streak
+ * 4 backs every hand in the range and caps its ladder at four wins. Shared
+ * code is the point: the side rule, the tie deletion, the settlement, the
+ * table-maximum clip and the next-hand reading were all worth having once.
+ *
  * Everything here is pure and deterministic over recorded coups. Like the
  * strategy replay, this is hindsight on hands that really came out, not a
  * forecast — and, like every other number in this app, it cannot change the
@@ -25,13 +32,11 @@ import { settleWager } from "./session";
 /** Sides a system can back. Ties are never a bet here. */
 export type SystemSide = "player" | "banker";
 
-export type BettingSystemId = "reverse-12";
+export type BettingSystemId = "reverse-12" | "reverse-streak-4";
 
 /**
- * The knobs. The defaults are the rule as it was specified:
- *
- *   watch 12, then from hand 13 bet against the hand 12 back, in groups of 6,
- *   $100 rising by $100 per win, stop the group on a loss, stop at hand 60.
+ * The knobs. Two systems share them, and the pair that separates those two is
+ * `groupsGateBetting` and `maxLadderSteps` — everything else is the same rule.
  */
 export interface BettingSystemConfig {
   /**
@@ -41,14 +46,36 @@ export interface BettingSystemConfig {
    * the first hand whose reference hand exists.
    */
   lookback: number;
-  /** Hands in a group. A group ends early on its first loss. */
+  /** Hands in a group. */
   groupSize: number;
-  /** Stake on a group's first bet, in currency. */
+  /** Stake at the bottom of the ladder, in currency. */
   baseStake: number;
-  /** Added to the stake after each win inside a group. */
+  /** Added to the stake after each win. */
   stakeStep: number;
   /** The last hand played. Null runs to the end of the shoe. */
   lastHand: number | null;
+  /**
+   * Whether a group GATES betting, or is only a reporting window.
+   *
+   * True (Reverse 12): a loss ends the group — every remaining hand in it is
+   * sat out — and the next group opens the ladder again at the base stake.
+   * The group is the unit the rule is played in.
+   *
+   * False (Reverse Streak 4): every hand inside the range carries a stake, a
+   * loss resets the ladder on the very next hand, and the ladder runs straight
+   * through a group boundary. Groups survive only so the run card can report
+   * in sixes.
+   */
+  groupsGateBetting: boolean;
+  /**
+   * Consecutive wins the ladder climbs before it drops back to the base.
+   *
+   * On a gated system this is the group's own length, where it can never bind:
+   * a seventh win inside a group of six does not exist. On an ungated one it
+   * is the whole cap — at four, the stakes run 100, 200, 300, 400, then 100
+   * again however the fourth went, and climb from there.
+   */
+  maxLadderSteps: number;
 }
 
 export const REVERSE_TWELVE_CONFIG: BettingSystemConfig = {
@@ -57,6 +84,19 @@ export const REVERSE_TWELVE_CONFIG: BettingSystemConfig = {
   baseStake: 100,
   stakeStep: 100,
   lastHand: 60,
+  groupsGateBetting: true,
+  // Equal to `groupSize`, so it never binds: the group ends first.
+  maxLadderSteps: 6,
+};
+
+export const REVERSE_STREAK_FOUR_CONFIG: BettingSystemConfig = {
+  lookback: 12,
+  groupSize: 6,
+  baseStake: 100,
+  stakeStep: 100,
+  lastHand: 60,
+  groupsGateBetting: false,
+  maxLadderSteps: 4,
 };
 
 export interface BettingSystemDefinition {
@@ -73,7 +113,27 @@ export const BETTING_SYSTEMS: readonly BettingSystemDefinition[] = [
     summary: "Mirror the hand 12 back, in groups of 6, climbing while it wins.",
     defaults: REVERSE_TWELVE_CONFIG,
   },
+  {
+    id: "reverse-streak-4",
+    name: "Reverse Streak 4",
+    summary: "The same mirror on every hand: climb one step a win, back to the base after four or after any loss.",
+    defaults: REVERSE_STREAK_FOUR_CONFIG,
+  },
 ];
+
+/** The system a run falls back to when none is named. */
+export const DEFAULT_BETTING_SYSTEM: BettingSystemDefinition = BETTING_SYSTEMS[0]!;
+
+/**
+ * Look a system up, falling back to the default rather than throwing.
+ *
+ * A stored `activeSystem` outlives the release that wrote it — an id dropped
+ * from a later build would otherwise crash the Table tab on load, which is
+ * worse than quietly running the default.
+ */
+export function bettingSystemById(id: BettingSystemId | null | undefined): BettingSystemDefinition {
+  return BETTING_SYSTEMS.find((entry) => entry.id === id) ?? DEFAULT_BETTING_SYSTEM;
+}
 
 /** Why a hand carried no bet. */
 export type SystemSkipReason = "warm-up" | "group-over" | "past-last-hand";
@@ -111,9 +171,15 @@ export interface SystemGroup {
   wins: number;
   staked: number;
   net: number;
-  /** The hand whose loss closed the group early, or null if it ran clean. */
+  /**
+   * The group's FIRST losing hand, or null if it ran clean.
+   *
+   * On Reverse 12 that loss also closed the group. On Reverse Streak 4 the
+   * group plays on, so this names where it first went wrong and there may be
+   * further losses after it.
+   */
   lostAt: number | null;
-  /** True when every hand in the group won — the group's best case. */
+  /** True when every hand in the group was bet and won — its best case. */
   perfect: boolean;
 }
 
@@ -135,6 +201,15 @@ export interface SystemNext {
   skipped: SystemSkipReason | null;
   /** The hand whose outcome decides the side, or null when sitting out. */
   referenceHand: number | null;
+  /**
+   * 1-based rung of the ladder this stake sits on, or 0 when sitting out.
+   *
+   * Distinct from `step`, and only the same number on Reverse 12. `step` is
+   * the position in the GROUP; this is how many wins the stake is carrying.
+   * On Reverse Streak 4 they diverge on the first loss: step 5 of the group
+   * can perfectly well be rung 1 of the ladder.
+   */
+  ladderStep: number;
   /** What to actually put on the table: the ladder's ask, clipped to the table maximum. */
   stake: number;
   /** What the ladder asked for before the table maximum was applied. */
@@ -237,6 +312,15 @@ function tieFreeHands(coups: readonly CoupRecord[]): {
 export interface RunBettingSystemOptions {
   coups: readonly CoupRecord[];
   rules: TableRules;
+  /**
+   * Which system to run. Null or omitted runs `DEFAULT_BETTING_SYSTEM`.
+   *
+   * This used to be `BETTING_SYSTEMS[0]!` inside the function, which was
+   * harmless with one system and a silent lie with two: selecting Reverse
+   * Streak 4 would have staked it under Reverse 12's rules while every card
+   * on screen carried the name of the system the player chose.
+   */
+  system?: BettingSystemId | null;
   config?: Partial<BettingSystemConfig>;
   /** Table ceiling in currency. A stake above it is clipped. Null = no ceiling. */
   tableMax?: number | null;
@@ -275,14 +359,20 @@ function resolveConfig(
 /**
  * Play one shoe through the system and report what it did.
  *
- * The ladder is defined on STAKES, so a group that wins six in a row stakes
- * base, base+step, ... regardless of what each win paid. That matters on
- * Banker, where a win returns 0.95x: six perfect Banker hands on the default
- * config stake $2,100 and return $1,995, not $2,100. The gap is the
- * commission, and it is the reason the per-unit figure lands where it does.
+ * The ladder is defined on STAKES, so a run of six wins stakes base,
+ * base+step, ... regardless of what each win paid. That matters on Banker,
+ * where a win returns 0.95x: six perfect Banker hands on Reverse 12's config
+ * stake $2,100 and return $1,995, not $2,100. The gap is the commission, and
+ * it is the reason the per-unit figure lands where it does.
+ *
+ * Note what that means for Reverse Streak 4's cap. Four wins at 100, 200, 300
+ * and 400 return 1,000 on Banker rather than 1,000 flat — and the reset hands
+ * the next loss a 100 stake instead of a 500 one. Capping the ladder cuts the
+ * size of the swings in both directions; it cannot cut the rate, which is the
+ * house edge and is untouched by when or how much you bet.
  */
 export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
-  const definition = BETTING_SYSTEMS[0]!;
+  const definition = bettingSystemById(options.system);
   const config = resolveConfig(definition.defaults, options.config);
   const { rules, tableMax = null, bankroll = null } = options;
   const { hands: sequence, tiesRemoved } = tieFreeHands(options.coups);
@@ -301,8 +391,10 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
   let clippedBets = 0;
   let approximate = false;
 
-  // Live group state. `groupDead` is the "stop until the next group" rule.
-  let groupWins = 0;
+  // Live ladder state. `banked` is consecutive wins the stake is carrying;
+  // `groupDead` is the "stop until the next group" rule, which only a gated
+  // system ever sets.
+  let banked = 0;
   let groupDead = false;
   let current: SystemGroup | null = null;
 
@@ -322,10 +414,14 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
       group = Math.floor(offset / config.groupSize) + 1;
       step = (offset % config.groupSize) + 1;
 
-      // A new group resets the ladder and revives betting.
       if (step === 1) {
-        groupWins = 0;
-        groupDead = false;
+        // A new group resets the ladder and revives betting — but only where
+        // the group is the unit of play. Ungated, the ladder runs straight
+        // through the boundary and the group is a reporting window.
+        if (config.groupsGateBetting) {
+          banked = 0;
+          groupDead = false;
+        }
         const covers = hand + config.groupSize - 1;
         // Clamped twice, so a group the run ends inside never claims hands it
         // was not allowed to play (config.lastHand) OR hands the shoe never
@@ -377,7 +473,7 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
     const reference = sequence[referenceHand - 1]!;
     const side = opposite(reference.outcome);
 
-    const wanted = config.baseStake + groupWins * config.stakeStep;
+    const wanted = config.baseStake + banked * config.stakeStep;
     const stake = tableMax === null ? wanted : Math.min(wanted, tableMax);
     if (stake < wanted - 1e-9) clippedBets += 1;
 
@@ -413,15 +509,25 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
     group_.bets += 1;
     group_.staked += stake;
     group_.net += settlement.profit;
-    if (won) {
-      group_.wins += 1;
-      if (group_.bets === config.groupSize) group_.perfect = true;
-    } else {
-      group_.lostAt = hand;
-    }
+    if (won) group_.wins += 1;
+    // The FIRST loss, not the last: a gated group only ever has one, but an
+    // ungated one keeps playing, and "lost on 41" should name where the group
+    // first went wrong rather than wherever it last did.
+    else if (group_.lostAt === null) group_.lostAt = hand;
+    // Recomputed rather than set on the winning sixth hand, because a group
+    // that keeps betting after a loss can also reach six bets: `bets === 6`
+    // alone would call a 5-1 group clean.
+    group_.perfect = group_.lostAt === null && group_.bets === config.groupSize;
 
-    if (won) groupWins += 1;
-    else groupDead = true;
+    if (won) {
+      banked += 1;
+      // The cap. At four the fifth hand drops to the base however the fourth
+      // went, and climbs again from there.
+      if (banked >= config.maxLadderSteps) banked = 0;
+    } else {
+      banked = 0;
+      if (config.groupsGateBetting) groupDead = true;
+    }
 
     hands.push({
       hand,
@@ -441,7 +547,7 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
 
   const target = config.lastHand;
   return {
-    next: describeNext(sequence, config, groupWins, groupDead, tableMax, bankroll),
+    next: describeNext(sequence, config, banked, groupDead, tableMax, bankroll),
     id: definition.id,
     name: definition.name,
     config,
@@ -474,7 +580,7 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
 function describeNext(
   sequence: readonly { outcome: SystemSide }[],
   config: BettingSystemConfig,
-  groupWins: number,
+  banked: number,
   groupDead: boolean,
   tableMax: number | null,
   bankroll: number | null,
@@ -488,6 +594,7 @@ function describeNext(
     bet: null,
     skipped,
     referenceHand: null,
+    ladderStep: 0,
     stake: 0,
     requestedStake: 0,
     clipped: false,
@@ -502,10 +609,12 @@ function describeNext(
   const step = (offset % config.groupSize) + 1;
 
   // Opening a group wipes the slate; mid-group, a dead group stays dead.
-  const opening = step === 1;
+  // Both only where the group gates play at all — ungated, `groupDead` is
+  // never set and the ladder carries across the boundary untouched.
+  const opening = step === 1 && config.groupsGateBetting;
   if (!opening && groupDead) return idle("group-over", group, step);
 
-  const banked = opening ? 0 : groupWins;
+  const rungs = opening ? 0 : banked;
   const referenceHand = hand - config.lookback;
   const reference = sequence[referenceHand - 1];
   // Defensive: with lookback >= 1 this hand always exists, because the
@@ -515,7 +624,7 @@ function describeNext(
   // The same clip the run applies. Without it the card names the ladder's
   // ask while the run books the capped amount, so the Table tab instructs a
   // stake above the table maximum.
-  const requestedStake = config.baseStake + banked * config.stakeStep;
+  const requestedStake = config.baseStake + rungs * config.stakeStep;
   const stake = tableMax === null ? Math.max(0, requestedStake) : Math.min(requestedStake, tableMax);
 
   return {
@@ -525,6 +634,7 @@ function describeNext(
     bet: opposite(reference.outcome),
     skipped: null,
     referenceHand,
+    ladderStep: rungs + 1,
     stake,
     requestedStake,
     clipped: stake < requestedStake - 1e-9,

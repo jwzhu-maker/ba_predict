@@ -11,6 +11,12 @@ import { useAppState, useDispatch, useLifetime, useMoney } from "../state/store"
  * A single session is mostly luck; the lifetime row is where the edge becomes
  * visible. That is the one number on this screen worth looking at, so it is at
  * the top and it is stated as a cost rather than a "win rate".
+ *
+ * "Start over" lives here rather than under Settings, where it was buried
+ * among preferences nobody opens mid-sitting. Both of its buttons file the
+ * current session into the list directly below them, so pressing one shows
+ * its own result — and the Table tab keeps its whole height for the card
+ * that says what to bet.
  */
 export default function HistoryScreen() {
   // Which row's X has been armed, and whether the clear-all is armed. Both
@@ -30,6 +36,35 @@ export default function HistoryScreen() {
 
   return (
     <div className="screen">
+      <Card title="Start over" subtitle="Ending a session files it below">
+        <div className="button-row">
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={() => dispatch({ type: "end-session" })}
+          >
+            End session
+          </button>
+          <button
+            type="button"
+            className="button"
+            onClick={() => dispatch({ type: "reset-session" })}
+          >
+            Reset stake
+          </button>
+        </div>
+        <p className="field-hint">
+          <strong>End session</strong> files the current session under History and opens a fresh
+          one carrying your balance &mdash; that is what to press when the shoe ends and you want
+          it recorded. <strong>Reset stake</strong> also files it, but puts the original starting
+          bankroll back, for when you were experimenting rather than playing.
+        </p>
+        <p className="field-hint">
+          The <strong>New shoe</strong> button on the Table tab is the lighter one: it swaps the
+          cards and leaves the sitting &mdash; and the money &mdash; running across shoes.
+        </p>
+      </Card>
+
       <Card title="Lifetime" subtitle="Every closed session, plus the one running now">
         <div className="stat-grid">
           <Stat label="Sessions" value={String(lifetime.sessions)} />

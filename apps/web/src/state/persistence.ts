@@ -29,11 +29,3 @@ export function saveState(state: AppState): void {
     // Storage full or blocked: the app keeps working, it just forgets.
   }
 }
-
-export function clearState(): void {
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Nothing to do.
-  }
-}

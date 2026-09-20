@@ -58,6 +58,8 @@ export function deserializeState(raw: string | null | undefined): AppState {
       skipNextCoup: false,
       // Observing is a decision about the sitting, so it does survive.
       tableMode: parsed.tableMode === "observe" ? "observe" : "play",
+      // How much the app should explain is a preference, so it survives too.
+      adviceReasonsOpen: parsed.adviceReasonsOpen === true,
       // Undo history is deliberately not restored: it is a stack of whole
       // sessions, and "undo across a relaunch" is not a promise worth making.
       history: [],

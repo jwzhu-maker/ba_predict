@@ -1,4 +1,4 @@
-import { readSystemNext } from "@ba-predict/app-core";
+import { nextHandDetail, readSystemNext, tieReconciliation } from "@ba-predict/app-core";
 import { Card, Notice } from "./Primitives";
 import { useAppState, useMoney, useSystemRun } from "../state/store";
 
@@ -56,6 +56,8 @@ export default function SystemNextBet() {
         </p>
       );
     }
+    // Only a system whose groups gate play can reach this; Reverse Streak
+    // 4 never sits a hand out once it has started.
     if (next.skipped === "group-over") {
       // `readSystemNext` is what knows there may be no next group: group 8
       // covers hands 55-60, so a loss inside it leaves nothing to wait for.
@@ -82,11 +84,10 @@ export default function SystemNextBet() {
           <span className={`system-side system-side-${next.bet}`}>{SIDE_LABEL[next.bet]}</span>
           <span className="system-stake">{money.format(next.stake)}</span>
         </div>
-        <p className="field-hint">
-          Hand {next.hand} · group {next.group}, bet {next.step} of {run.config.groupSize} ·
-          mirroring hand {next.referenceHand}
-          {next.step === 1 ? " · fresh group, back to the base stake" : null}
-        </p>
+        {/* Shared with the Bet card's own detail line, and shaped by the
+            system: a group step is the ladder rung on Reverse 12 and is not
+            on Reverse Streak 4, where a loss resets one and not the other. */}
+        <p className="field-hint">{nextHandDetail(run)}</p>
       </>
     );
   };
@@ -103,13 +104,12 @@ export default function SystemNextBet() {
         The reconciliation nothing else on screen provides: the rule counts
         tie-free hands and the board counts coups, and a player checking the
         instruction by hand needs to know which number is which.
+
+        Rendered on every hand, including before the first tie — appearing
+        only once a tie was dealt made the card grow mid-shoe and moved the
+        Record buttons under the thumb reaching for them.
       */}
-      {run.tiesRemoved > 0 && !finished ? (
-        <p className="field-hint">
-          {run.tiesRemoved} tie{run.tiesRemoved === 1 ? "" : "s"} recorded and not counted, so this
-          is hand {next.hand} of the rule but coup {run.tiesRemoved + next.hand} of the shoe.
-        </p>
-      ) : null}
+      {finished ? null : <p className="field-hint">{tieReconciliation(run)}</p>}
 
       {run.approximate ? (
         <Notice tone="warn">

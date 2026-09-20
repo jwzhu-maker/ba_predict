@@ -1,6 +1,7 @@
 import {
   runBettingSystem,
   type BettingSystemConfig,
+  type BettingSystemId,
   type CoupRecord,
   type SystemRun,
   type TableRules,
@@ -37,6 +38,7 @@ export interface SystemShoeResult {
 }
 
 export interface SystemRecord {
+  id: BettingSystemId;
   name: string;
   config: BettingSystemConfig;
   /** Shoes with at least one hand. */
@@ -74,6 +76,15 @@ export interface SystemRecordOptions {
   /** The shoe still in progress, if it has any coups. */
   currentShoe?: readonly CoupRecord[];
   rules: TableRules;
+  /**
+   * Which system to replay. Null or omitted replays the default.
+   *
+   * Every shoe is replayed through the SAME system, which is what makes the
+   * totals comparable — the archive stores coups, not what was staked on
+   * them, so switching systems re-reads the whole history under the new rule
+   * rather than reporting a mixture of both.
+   */
+  system?: BettingSystemId | null;
   config?: Partial<BettingSystemConfig>;
   tableMax?: number | null;
 }
@@ -147,6 +158,7 @@ export function aggregateSystemRecord(options: SystemRecordOptions): SystemRecor
   const describing = firstRun ?? runBettingSystem({ ...runOptions, coups: [] });
 
   return {
+    id: describing.id,
     name: describing.name,
     config: describing.config,
     shoes: counted,

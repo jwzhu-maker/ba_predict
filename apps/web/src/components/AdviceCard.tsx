@@ -23,7 +23,7 @@ export default function AdviceCard() {
   const advice = useAdvice();
   const money = useMoney();
   const dispatch = useDispatch();
-  const { skipNextCoup } = useAppState();
+  const { skipNextCoup, adviceReasonsOpen } = useAppState();
 
   const betting = call.bet !== null;
   // A stop is the app's most important message and it must keep its colour
@@ -106,7 +106,19 @@ export default function AdviceCard() {
         the Record buttons moving, on the screen where reaching those buttons
         matters most.
       */}
-      <details className="advice-why">
+      <details
+        className="advice-why"
+        // Controlled from app state, not left to the element's own memory:
+        // switching tabs unmounts this screen, so a `<details>` the user had
+        // just opened came back folded.
+        open={adviceReasonsOpen}
+        onToggle={(event) =>
+          dispatch({
+            type: "set-advice-reasons-open",
+            open: (event.currentTarget as HTMLDetailsElement).open,
+          })
+        }
+      >
         <summary>Why this</summary>
         <ul className="advice-reasons">
           {advice.reasons.map((reason) => (

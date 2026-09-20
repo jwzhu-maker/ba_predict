@@ -29,7 +29,8 @@ export default function TableScreen() {
   const p = usePalette();
   const s = useStyles(p);
   const local = useLocalStyles();
-  const { session, pendingWager, cardEntry, lastSettlement, skipNextCoup } = useAppState();
+  const { session, pendingWager, cardEntry, lastSettlement, skipNextCoup, adviceReasonsOpen } =
+    useAppState();
   const dispatch = useDispatch();
   const advice = useAdvice();
   // What the Bet card shows and what a recorded result settles against, so
@@ -43,7 +44,10 @@ export default function TableScreen() {
   const [bankerPair, setBankerPair] = useState(false);
   const [cardCount, setCardCount] = useState<4 | 5 | 6 | null>(null);
   const [bankerWinOnSix, setBankerWinOnSix] = useState(false);
-  const [showWhy, setShowWhy] = useState(false);
+  // In app state, not local: the tab navigator unmounts this screen, so a
+  // `useState` here folded the reasoning again every time the user looked at
+  // the roads and came back.
+  const showWhy = adviceReasonsOpen;
   // Null means "follow the Bet card"; touching a control pins a value, and
   // taking the wager back (or the app's call moving on) releases it again.
   const [betOverride, setBetOverride] = useState<BetType | null>(null);
@@ -176,7 +180,10 @@ export default function TableScreen() {
 
         {/* Folded: these lines are the same every hand, and open they were
             most of the height this card has to reserve. */}
-        <Pressable onPress={() => setShowWhy((v) => !v)} accessibilityRole="button">
+        <Pressable
+          onPress={() => dispatch({ type: "set-advice-reasons-open", open: !showWhy })}
+          accessibilityRole="button"
+        >
           <Text style={{ color: p.muted, fontSize: 12, fontWeight: "600", paddingVertical: 4 }}>
             {showWhy ? "Hide why" : "Why this"}
           </Text>
@@ -213,7 +220,10 @@ export default function TableScreen() {
         subtitle={
           settling
             ? `${money.format(settling.amount)} on ${betLabel(settling.bet)}`
-            : "No wager on the table — this only updates the road"
+            // Short enough for one line at 320px: the long version wrapped to
+            // two and moved the Record buttons whenever a wager came or went.
+            // The Bet card above already spells out that nothing is staked.
+            : "Nothing staked — road only"
         }
       >
         <View style={{ flexDirection: "row", gap: 8 }}>

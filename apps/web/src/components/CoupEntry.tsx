@@ -53,7 +53,10 @@ export default function CoupEntry() {
       subtitle={
         settling
           ? `${money.format(settling.amount)} on ${betLabel(settling.bet)}`
-          : "No wager on the table — this only updates the road"
+          // Short enough for one line at 320px: the long version wrapped to
+          // two and moved the Record buttons whenever a wager came or went.
+          // The Bet card above already spells out that nothing is staked.
+          : "Nothing staked — road only"
       }
     >
       <div className="outcome-row">

@@ -5,6 +5,7 @@ import {
   type PlacedWager,
   type SystemRun,
 } from "@ba-predict/engine";
+import { nextHandDetail } from "./system-copy";
 
 /**
  * What the app is telling you to do on the very next coup — one answer, from
@@ -162,7 +163,9 @@ function pointAt(input: TableCallInput): TableCall {
       amount: next.stake,
       stakes: true,
       noBetReason: null,
-      detail: `Hand ${next.hand} · group ${next.group}, bet ${next.step} of ${run.config.groupSize} · mirroring hand ${next.referenceHand}`,
+      // Shared with the system's own card, because the two sit one above
+      // the other and a group step is not a ladder rung on every system.
+      detail: nextHandDetail(run),
       requestedAmount: next.clipped ? next.requestedStake : null,
       clipped: next.clipped,
     };

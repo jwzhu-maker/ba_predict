@@ -394,3 +394,40 @@ describe("deleting one archived session", () => {
     expect(deserializeState(serializeState(after)).archive).toHaveLength(1);
   });
 });
+
+describe("the Why this fold", () => {
+  it("is closed to begin with", () => {
+    expect(createInitialState().adviceReasonsOpen).toBe(false);
+  });
+
+  it("opens and closes on the action", () => {
+    let state = reducer(createInitialState(), { type: "set-advice-reasons-open", open: true });
+    expect(state.adviceReasonsOpen).toBe(true);
+    state = reducer(state, { type: "set-advice-reasons-open", open: false });
+    expect(state.adviceReasonsOpen).toBe(false);
+  });
+
+  it("survives a round trip through storage", () => {
+    // It lives in app state precisely BECAUSE a `useState` in the card did
+    // not survive a tab switch. Persisting it is the same promise one step
+    // further: the app should not re-fold an explanation you asked for.
+    const open = reducer(createInitialState(), { type: "set-advice-reasons-open", open: true });
+    expect(deserializeState(serializeState(open)).adviceReasonsOpen).toBe(true);
+
+    const shut = reducer(open, { type: "set-advice-reasons-open", open: false });
+    expect(deserializeState(serializeState(shut)).adviceReasonsOpen).toBe(false);
+  });
+
+  it("defaults to closed for state stored before it existed", () => {
+    const before = JSON.parse(serializeState(createInitialState())) as Record<string, unknown>;
+    delete before.adviceReasonsOpen;
+    expect(deserializeState(JSON.stringify(before)).adviceReasonsOpen).toBe(false);
+  });
+
+  it("does not disturb anything else", () => {
+    const state = reducer(createInitialState(), { type: "set-active-system", system: "reverse-12" });
+    const after = reducer(state, { type: "set-advice-reasons-open", open: true });
+    expect(after.activeSystem).toBe("reverse-12");
+    expect(after.session).toBe(state.session);
+  });
+});

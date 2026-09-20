@@ -13,6 +13,12 @@ import { usePalette } from "../theme";
  * A single session is mostly luck; the lifetime row is where the edge becomes
  * visible. That is the one number worth looking at here, so it is at the top
  * and it is stated as a cost rather than a win rate.
+ *
+ * "Start over" lives here rather than under Settings, where it was buried
+ * among preferences nobody opens mid-sitting. Both of its buttons file the
+ * current session into the list directly below them, so pressing one shows
+ * its own result — and the Table tab keeps its whole height for the card
+ * that says what to bet.
  */
 export default function HistoryScreen() {
   // Which row's X is armed, and whether the clear-all is. Both deletes are
@@ -34,6 +40,26 @@ export default function HistoryScreen() {
 
   return (
     <View style={{ gap: 12 }}>
+      <Card title="Start over" subtitle="Ending a session files it below">
+        <Row>
+          <Btn
+            label="End session"
+            variant="primary"
+            onPress={() => dispatch({ type: "end-session" })}
+          />
+          <Btn label="Reset stake" onPress={() => dispatch({ type: "reset-session" })} />
+        </Row>
+        <Hint>
+          End session banks the night and carries your current balance into a new one. Reset
+          stake also files it, but puts the original starting bankroll back — for when you were
+          experimenting rather than playing.
+        </Hint>
+        <Hint>
+          The New shoe button on the Table tab is the lighter one: it swaps the cards and leaves
+          the sitting — and the money — running across shoes.
+        </Hint>
+      </Card>
+
       <Card title="Lifetime" subtitle="Every closed session, plus the one running now">
         <Row>
           <Stat label="Sessions" value={String(lifetime.sessions)} />

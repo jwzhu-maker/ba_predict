@@ -74,6 +74,16 @@ export interface AppState {
    * touched.
    */
   tableMode: TableMode;
+  /**
+   * Whether the Bet card's "Why this" reasoning is unfolded.
+   *
+   * In app state rather than in each card's own `useState` because a tab
+   * switch unmounts the Table screen: opening it, glancing at the roads and
+   * coming back folded it again, so the control did not hold the setting a
+   * person had just made. It is a preference about how much the app should
+   * explain, not a per-visit detail, so it survives a relaunch too.
+   */
+  adviceReasonsOpen: boolean;
   screen: Screen;
 }
 
@@ -93,6 +103,7 @@ export function createInitialState(): AppState {
     activeSystem: null,
     skipNextCoup: false,
     tableMode: "play",
+    adviceReasonsOpen: false,
     screen: "table",
   };
 }
@@ -127,6 +138,7 @@ export type Action =
   | { type: "set-active-system"; system: BettingSystemId | null }
   | { type: "skip-next-coup"; skip: boolean }
   | { type: "set-table-mode"; mode: TableMode }
+  | { type: "set-advice-reasons-open"; open: boolean }
   | { type: "update-rules"; rules: Partial<TableRules> }
   | { type: "update-bankroll"; bankroll: Partial<BankrollState> }
   | { type: "set-progression"; progression: ProgressionId }
@@ -285,6 +297,9 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case "set-table-mode":
       return { ...state, tableMode: action.mode, skipNextCoup: false };
+
+    case "set-advice-reasons-open":
+      return { ...state, adviceReasonsOpen: action.open };
 
     case "skip-next-coup":
       return {

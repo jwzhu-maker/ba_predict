@@ -261,3 +261,58 @@ describe("resolveTableCall", () => {
     }
   });
 });
+
+describe("the call under a second system", () => {
+  const streak = (pattern: string, extra = {}) =>
+    runBettingSystem({
+      coups: coups(pattern),
+      rules: DEFAULT_RULES,
+      system: "reverse-streak-4" as const,
+      ...extra,
+    });
+
+  it("carries the chosen system's name, stake and detail", () => {
+    const call = resolveTableCall({ ...base, run: streak(`${WARMUP}BBB`) });
+    expect(call).toMatchObject({
+      source: "system",
+      systemName: "Reverse Streak 4",
+      bet: "banker",
+      amount: 400,
+      stakes: true,
+    });
+    expect(call.detail).toContain("ladder step 4 of 4");
+    // The group step is 4 here too, which is the coincidence that makes the
+    // divergence below worth pinning rather than assumed.
+    expect(call.detail).not.toContain("group");
+  });
+
+  it("names the ladder rung rather than the group step after a loss", () => {
+    // Group step 5, ladder rung 1. The old hardcoded line said "bet 5 of 6"
+    // over a 100 stake, which reads as the fifth rung of a climbing ladder.
+    const call = resolveTableCall({ ...base, run: streak(`${WARMUP}BBPB`) });
+    expect(call.amount).toBe(200);
+    expect(call.detail).toBe("Hand 17 · ladder step 2 of 4 · mirroring hand 5");
+  });
+
+  it("never sits a coup out once it is past the warm-up", () => {
+    // The same hands under Reverse 12 are a dead group.
+    const hands = `${WARMUP}BBPP`;
+    expect(resolveTableCall({ ...base, run: run(hands) })).toMatchObject({
+      bet: null,
+      stakes: false,
+    });
+    expect(resolveTableCall({ ...base, run: streak(hands) })).toMatchObject({
+      bet: "banker",
+      amount: 100,
+      stakes: true,
+    });
+  });
+
+  it("still refuses to stake what the bankroll cannot cover", () => {
+    // Every gate applies to the new system exactly as to the old one; this
+    // is the one that used to be a disabled button.
+    const call = resolveTableCall({ ...base, run: streak(`${WARMUP}BBB`), bankroll: 50 });
+    expect(call).toMatchObject({ bet: "banker", amount: 400, stakes: false, unaffordable: true });
+    expect(callToWager(call)).toBeNull();
+  });
+});

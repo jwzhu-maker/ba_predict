@@ -1,3 +1,4 @@
+import { describeBetRate, describeSystemRules } from "@ba-predict/app-core";
 import { BETTING_SYSTEMS } from "@ba-predict/engine";
 import { Card, Notice, Toggle } from "./Primitives";
 import { useAppState, useDispatch, useMoney } from "../state/store";
@@ -52,13 +53,7 @@ export default function StrategyPicker() {
 
       {active ? (
         <p className="prose">
-          <strong>{active.name}.</strong> {active.summary} Watch {active.defaults.lookback} hands,
-          then from hand {active.defaults.lookback + 1} back the opposite of the hand{" "}
-          {active.defaults.lookback} before it. Groups of {active.defaults.groupSize}, opening at{" "}
-          {money.format(active.defaults.baseStake)} and adding{" "}
-          {money.format(active.defaults.stakeStep)} after each win, stopping the group on its
-          first loss and the shoe after hand {active.defaults.lastHand}. Ties are deleted before
-          any of that is counted.
+          <strong>{active.name}.</strong> {describeSystemRules(active.defaults, money)}
         </p>
       ) : (
         <p className="prose">
@@ -84,6 +79,19 @@ export default function StrategyPicker() {
           dispatch({ type: "set-table-mode", mode: checked ? "observe" : "play" })
         }
       />
+
+      {/*
+        The one number that separates the systems on offer, derived rather
+        than written out: 16 hands or 48. A comparison paragraph naming them
+        would be wrong the day a third is added.
+      */}
+      {active && describeBetRate(active.defaults) ? (
+        <p className="field-hint">
+          {describeBetRate(active.defaults)} Staking more does not cost more per unit &mdash; how
+          often you bet has never changed what a bet costs &mdash; but it does mean bigger swings
+          either way, and a bigger total loss at the same rate.
+        </p>
+      ) : null}
 
       <p className="field-hint">
         Whatever is chosen here is what the <strong>Bet</strong> card on the Table tab instructs,
