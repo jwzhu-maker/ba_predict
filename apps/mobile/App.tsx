@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View, useColorScheme } from "r
 // takes `edges`, and the bottom edge is handled by the tab bar's own padding.
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Screen } from "@ba-predict/app-core";
+import BankrollHeader from "./src/components/BankrollHeader";
 import HistoryScreen from "./src/screens/HistoryScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import SimulatorScreen from "./src/screens/SimulatorScreen";
@@ -28,6 +29,12 @@ function Shell() {
   const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: p.bg },
     header: {
+      // A row now, so the money can sit on the right. The header is already
+      // outside the ScrollView, which is what pins it.
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: 12,
       paddingHorizontal: 16,
       paddingTop: 10,
       paddingBottom: 10,
@@ -55,8 +62,16 @@ function Shell() {
     <SafeAreaView style={styles.root} edges={["top", "left", "right"]}>
       <StatusBar style={scheme === "light" ? "dark" : "light"} />
       <View style={styles.header}>
-        <Text style={styles.title}>ba_predict</Text>
-        <Text style={styles.tagline}>Baccarat odds, honestly</Text>
+        <View style={{ flexShrink: 1, minWidth: 0 }}>
+          <Text style={styles.title} numberOfLines={1}>
+            ba_predict
+          </Text>
+          <Text style={styles.tagline} numberOfLines={1}>
+            Baccarat odds, honestly
+          </Text>
+        </View>
+        {/* The figures are why this bar is pinned, so they never shrink. */}
+        <BankrollHeader />
       </View>
 
       <ScrollView

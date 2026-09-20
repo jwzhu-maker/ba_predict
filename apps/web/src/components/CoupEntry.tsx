@@ -1,6 +1,7 @@
 import { betLabel, type Outcome } from "@ba-predict/engine";
 import { useState } from "react";
-import { useAppState, useDispatch, useMoney } from "../state/store";
+import { callToWager } from "@ba-predict/app-core";
+import { useAppState, useDispatch, useMoney, useTableCall } from "../state/store";
 import { Card, Notice } from "./Primitives";
 
 /**
@@ -15,19 +16,23 @@ export default function CoupEntry() {
   const { session, pendingWager, lastSettlement } = useAppState();
   const dispatch = useDispatch();
   const money = useMoney();
+  // What the Bet card is showing. Recording settles against it, so the two
+  // can never disagree about the money that moved.
+  const call = useTableCall();
+  const settling = pendingWager ?? callToWager(call);
 
   const [playerPair, setPlayerPair] = useState(false);
   const [bankerPair, setBankerPair] = useState(false);
   const [cardCount, setCardCount] = useState<4 | 5 | 6 | null>(null);
   const [bankerWinOnSix, setBankerWinOnSix] = useState(false);
 
-  const needsCardCount = pendingWager?.bet === "big" || pendingWager?.bet === "small";
-  const needsBankerSix =
-    session.rules.bankerSixPayout !== null && pendingWager?.bet === "banker";
+  const needsCardCount = settling?.bet === "big" || settling?.bet === "small";
+  const needsBankerSix = session.rules.bankerSixPayout !== null && settling?.bet === "banker";
 
   const record = (outcome: Outcome) => {
     dispatch({
       type: "record-coup",
+      wager: callToWager(call),
       coup: {
         outcome,
         playerPair,
@@ -46,8 +51,8 @@ export default function CoupEntry() {
     <Card
       title="Record the result"
       subtitle={
-        pendingWager
-          ? `${money.format(pendingWager.amount)} on ${betLabel(pendingWager.bet)}`
+        settling
+          ? `${money.format(settling.amount)} on ${betLabel(settling.bet)}`
           : "No wager on the table — this only updates the road"
       }
     >
@@ -87,7 +92,7 @@ export default function CoupEntry() {
 
       {needsCardCount ? (
         <div className="conditional">
-          <p className="field-label">Cards dealt (needed to settle {betLabel(pendingWager.bet)})</p>
+          <p className="field-label">Cards dealt (needed to settle {betLabel(settling!.bet)})</p>
           <div className="chip-row">
             {([4, 5, 6] as const).map((count) => (
               <button

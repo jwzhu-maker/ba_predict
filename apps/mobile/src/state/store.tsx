@@ -7,6 +7,7 @@ import {
   aggregateStrategyRecord,
   aggregateSystemRecord,
   isReplayableBet,
+  resolveTableCall,
   lifetimeStats,
   replayStrategies,
   reducer,
@@ -18,6 +19,7 @@ import {
   type StrategyRecord,
   type StrategyReplay,
   type SystemRecord,
+  type TableCall,
 } from "@ba-predict/app-core";
 import {
   buildRoads,
@@ -248,6 +250,27 @@ export function useSystemRecord(): SystemRecord {
         tableMax: session.bankroll.tableMax > 0 ? session.bankroll.tableMax : null,
       }),
     [shoeArchive, session.coups, session.shoeStartIndex, session.rules, session.bankroll.tableMax],
+  );
+}
+
+/**
+ * The single instruction the Table tab shows and the recorded result settles
+ * against. Null system means none is selected, and the engine answers.
+ */
+export function useTableCall(): TableCall {
+  const { session, pendingWager, skipNextCoup, activeSystem } = useAppState();
+  const advice = useAdvice();
+  const { run } = useSystemRun();
+  return useMemo(
+    () =>
+      resolveTableCall({
+        advice,
+        run: activeSystem === null ? null : run,
+        manualWager: pendingWager,
+        skipped: skipNextCoup,
+        bankroll: session.bankroll.bankroll,
+      }),
+    [advice, run, activeSystem, pendingWager, skipNextCoup, session.bankroll.bankroll],
   );
 }
 

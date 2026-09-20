@@ -1,3 +1,4 @@
+import type { PlacedWager } from "@ba-predict/engine";
 import { createShoe, cardsRemaining } from "@ba-predict/engine";
 import { describe, expect, it } from "vitest";
 import { createInitialState, reducer, type AppState } from "../reducer";
@@ -185,5 +186,89 @@ describe("remembering the shoe that just ended", () => {
     );
     expect(state.session.previousShoeStartIndex).toBe(0);
     expect(state.session.shoeStartIndex).toBe(1);
+  });
+});
+
+describe("betting the suggestion by default", () => {
+  /**
+   * The stake is now opt-OUT: recording a result settles against whatever the
+   * Bet card was showing. That moves real money on every coup, so the rules
+   * about WHEN it does not are the ones worth pinning.
+   */
+  const record = (state: AppState, wager: PlacedWager | null) =>
+    reducer(state, {
+      type: "record-coup",
+      wager,
+      coup: { outcome: "banker", playerPair: false, bankerPair: false },
+    });
+
+  it("settles the wager the card was showing", () => {
+    const before = createInitialState();
+    const after = record(before, { bet: "banker", amount: 100 });
+    expect(after.session.coups.at(-1)!.wager).toMatchObject({ bet: "banker", amount: 100 });
+    expect(after.session.bankroll.bankroll).toBeGreaterThan(before.session.bankroll.bankroll);
+  });
+
+  it("settles nothing when the card was showing no bet", () => {
+    const before = createInitialState();
+    const after = record(before, null);
+    expect(after.session.coups.at(-1)!.wager).toBeUndefined();
+    expect(after.session.bankroll.bankroll).toBe(before.session.bankroll.bankroll);
+  });
+
+  it("prefers a hand-placed wager over the suggestion", () => {
+    let state = createInitialState();
+    state = reducer(state, { type: "place-wager", wager: { bet: "player", amount: 40 } });
+    const after = record(state, { bet: "banker", amount: 100 });
+    expect(after.session.coups.at(-1)!.wager).toMatchObject({ bet: "player", amount: 40 });
+  });
+
+  it("stakes nothing at all for an older caller that passes no wager", () => {
+    // `wager` is optional, so a caller that never learned about it must not
+    // silently start staking the suggestion.
+    const before = createInitialState();
+    const after = reducer(before, {
+      type: "record-coup",
+      coup: { outcome: "banker", playerPair: false, bankerPair: false },
+    });
+    expect(after.session.coups.at(-1)!.wager).toBeUndefined();
+    expect(after.session.bankroll.bankroll).toBe(before.session.bankroll.bankroll);
+  });
+
+  it("clears the skip after the coup it was pressed for", () => {
+    let state = createInitialState();
+    state = reducer(state, { type: "skip-next-coup", skip: true });
+    expect(state.skipNextCoup).toBe(true);
+    state = record(state, null);
+    expect(state.skipNextCoup).toBe(false);
+  });
+
+  it("skipping drops a wager already on the table", () => {
+    let state = createInitialState();
+    state = reducer(state, { type: "place-wager", wager: { bet: "player", amount: 40 } });
+    state = reducer(state, { type: "skip-next-coup", skip: true });
+    expect(state.pendingWager).toBeNull();
+  });
+
+  it("placing by hand cancels a skip, taking it back does not", () => {
+    let state = createInitialState();
+    state = reducer(state, { type: "skip-next-coup", skip: true });
+    state = reducer(state, { type: "place-wager", wager: { bet: "tie", amount: 10 } });
+    expect(state.skipNextCoup).toBe(false);
+
+    state = reducer(state, { type: "skip-next-coup", skip: true });
+    state = reducer(state, { type: "place-wager", wager: null });
+    expect(state.skipNextCoup).toBe(true);
+  });
+
+  it("choosing a system clears a skip left over from the previous one", () => {
+    let state = createInitialState();
+    expect(state.activeSystem).toBeNull();
+    state = reducer(state, { type: "skip-next-coup", skip: true });
+    state = reducer(state, { type: "set-active-system", system: "reverse-12" });
+    expect(state.activeSystem).toBe("reverse-12");
+    expect(state.skipNextCoup).toBe(false);
+    state = reducer(state, { type: "set-active-system", system: null });
+    expect(state.activeSystem).toBeNull();
   });
 });

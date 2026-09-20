@@ -11,7 +11,7 @@ import {
   type Settlement,
   type TableRules,
 } from "@ba-predict/engine";
-import { createShoe } from "@ba-predict/engine";
+import { createShoe, type BettingSystemId } from "@ba-predict/engine";
 import type { BankrollState } from "@ba-predict/engine";
 import {
   ARCHIVE_LIMIT,
@@ -44,6 +44,24 @@ export interface AppState {
   shoeArchive: ArchivedShoe[];
   /** ISO 4217 code, or PLAIN for unlabelled numbers. */
   currency: string;
+  /**
+   * The betting system being played, chosen on the Strategies tab, or null
+   * for none.
+   *
+   * Picking one at the start of the session is the point: it decides the
+   * side, the stake and whether to bet at all, so the Table tab's headline
+   * becomes that system's call rather than the engine's flat suggestion.
+   */
+  activeSystem: BettingSystemId | null;
+  /**
+   * True when the user has pressed "I don't bet this time".
+   *
+   * Per coup, not per session: recording a result clears it, because the
+   * next hand is a new decision. It exists because the app now stakes the
+   * suggestion automatically, so opting OUT is the action that needs a
+   * button rather than opting in.
+   */
+  skipNextCoup: boolean;
   screen: Screen;
 }
 
@@ -60,6 +78,8 @@ export function createInitialState(): AppState {
     evicted: EMPTY_EVICTED,
     shoeArchive: [],
     currency: DEFAULT_CURRENCY,
+    activeSystem: null,
+    skipNextCoup: false,
     screen: "table",
   };
 }
@@ -70,7 +90,19 @@ export type Action =
   | { type: "remove-card" }
   | { type: "clear-cards" }
   | { type: "place-wager"; wager: PlacedWager | null }
-  | { type: "record-coup"; coup: Omit<CoupInput, "cards">; now?: number }
+  | {
+      type: "record-coup";
+      coup: Omit<CoupInput, "cards">;
+      /**
+       * The wager this result settles against, as the card was showing it.
+       *
+       * The client resolves it (see `resolveTableCall`) so the money that
+       * moves is always the money on screen. A hand-placed `pendingWager`
+       * still wins, which is what an override means.
+       */
+      wager?: PlacedWager | null;
+      now?: number;
+    }
   | { type: "undo" }
   | { type: "new-shoe"; now?: number }
   | { type: "reset-session" }
@@ -78,6 +110,8 @@ export type Action =
   | { type: "clear-archive" }
   | { type: "clear-shoe-archive" }
   | { type: "set-currency"; currency: string }
+  | { type: "set-active-system"; system: BettingSystemId | null }
+  | { type: "skip-next-coup"; skip: boolean }
   | { type: "update-rules"; rules: Partial<TableRules> }
   | { type: "update-bankroll"; bankroll: Partial<BankrollState> }
   | { type: "set-progression"; progression: ProgressionId }
@@ -195,11 +229,35 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, cardEntry: [] };
 
     case "place-wager":
-      return { ...state, pendingWager: action.wager };
+      // Placing by hand is a decision to bet, so it cancels a skip; taking
+      // the wager back leaves the skip alone.
+      return {
+        ...state,
+        pendingWager: action.wager,
+        skipNextCoup: action.wager ? false : state.skipNextCoup,
+      };
+
+    case "set-active-system":
+      // A fresh system starts from a clean slate: a skip belongs to the coup
+      // it was pressed on, and a hand-placed wager was staked against the
+      // previous system's advice.
+      return { ...state, activeSystem: action.system, skipNextCoup: false };
+
+    case "skip-next-coup":
+      return {
+        ...state,
+        skipNextCoup: action.skip,
+        pendingWager: action.skip ? null : state.pendingWager,
+      };
 
     case "record-coup": {
       const coup: CoupInput = { ...action.coup, cards: state.cardEntry };
-      const { session, settlement } = applyCoup(state.session, coup, state.pendingWager);
+      // A hand-placed wager outranks the suggestion; otherwise the suggestion
+      // the card was showing is what settles. `undefined` (an older caller,
+      // or a test) falls back to the pending wager alone, so nothing is
+      // staked that was never asked for.
+      const wager = state.pendingWager ?? action.wager ?? null;
+      const { session, settlement } = applyCoup(state.session, coup, wager);
       // The sitting starts when money first goes down, not when the app
       // launched.
       const firstWagerAt =
@@ -210,6 +268,8 @@ export function reducer(state: AppState, action: Action): AppState {
         session: { ...session, firstWagerAt },
         cardEntry: [],
         pendingWager: null,
+        // The skip was for this coup; the next hand is a new decision.
+        skipNextCoup: false,
         lastSettlement: settlement,
       };
     }

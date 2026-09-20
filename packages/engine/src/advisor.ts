@@ -79,6 +79,17 @@ export interface Advice {
   /** Expected cost of placing this wager, in currency. Always positive on a real table. */
   expectedCost: number;
   reasons: string[];
+  /**
+   * How the stake was arrived at, kept OUT of `reasons` on purpose.
+   *
+   * It describes the ENGINE's own sizing — "1 unit at 10.00 each" — which is
+   * true only while the engine is the thing setting the stake. Once a betting
+   * system or a hand-placed wager decides the amount, this sentence is
+   * actively wrong, and rendering it alongside the other reasons made the
+   * card state a stake it was not about to place. The caller shows it exactly
+   * when the engine's amount is the one on the table.
+   */
+  sizingReason: string | null;
   warnings: string[];
   shoe: { remaining: number; penetration: number };
 }
@@ -128,6 +139,8 @@ function emptyAdvice(
     kelly: { fraction: 0, stake: 0 },
     expectedCost: 0,
     reasons,
+    // Nothing is being staked on this path, so there is no sizing to explain.
+    sizingReason: null,
     warnings,
     shoe: { remaining: cardsRemaining(shoe), penetration: penetration(shoe) },
   };
@@ -158,6 +171,7 @@ export function recommendBet(input: AdviceInput): Advice {
   const profit = bankroll.bankroll - bankroll.startingBankroll;
   const reasons: string[] = [];
   const warnings: string[] = [];
+  let sizingReason: string | null = null;
 
   if (bankroll.stopWin !== null && profit >= bankroll.stopWin) {
     return {
@@ -218,9 +232,7 @@ export function recommendBet(input: AdviceInput): Advice {
     reasons.push(
       `No bet on this table has a positive expectation, so there is no mathematically correct stake — Kelly sizing returns zero.`,
     );
-    reasons.push(
-      `Sizing therefore follows your ${progression.id} plan: ${progression.units} unit${progression.units === 1 ? "" : "s"} at ${money(bankroll.unitSize)} each.`,
-    );
+    sizingReason = `Sizing therefore follows your ${progression.id} plan: ${progression.units} unit${progression.units === 1 ? "" : "s"} at ${money(bankroll.unitSize)} each.`;
   }
 
   if (bet === cheapest.bet) {
@@ -277,6 +289,7 @@ export function recommendBet(input: AdviceInput): Advice {
     action,
     bet,
     amount,
+    sizingReason,
     units: bankroll.unitSize > 0 ? amount / bankroll.unitSize : 0,
     probabilities,
     valuations,

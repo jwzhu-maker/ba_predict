@@ -1,11 +1,10 @@
 import { describeEdge } from "@ba-predict/app-core";
 import { formatPercent, formatUnits } from "../lib/format";
-import { useAppState, useMoney, useStats } from "../state/store";
+import { useAppState, useStats } from "../state/store";
 
 export default function BankrollBar() {
   const { session } = useAppState();
   const stats = useStats();
-  const money = useMoney();
   const profit = session.bankroll.bankroll - session.bankroll.startingBankroll;
   const edge = describeEdge(stats.actualEdge);
   const { stopWin, stopLoss } = session.bankroll;
@@ -21,18 +20,15 @@ export default function BankrollBar() {
 
   return (
     <div className="bankroll">
-      <div className="bankroll-row">
-        <div>
-          <span className="bankroll-label">Bankroll</span>
-          <span className="bankroll-value">{money.format(session.bankroll.bankroll)}</span>
-        </div>
-        <div className="bankroll-right">
-          <span className="bankroll-label">Session</span>
-          <span className={`bankroll-value ${profit >= 0 ? "good" : "bad"}`}>
-            {money.signed(profit)}
-          </span>
-        </div>
-      </div>
+      {/*
+        The two headline figures moved to the sticky header, where they are
+        visible from every screen. Repeating them here would be the same
+        number twice on one screen; what stays is the detail the header has
+        no room for.
+      */}
+      <p className="bankroll-meta bankroll-meta-top">
+        {profit >= 0 ? "Toward your stop-win" : "Toward your stop-loss"}
+      </p>
 
       <div
         className={`bankroll-meter ${profit >= 0 ? "meter-good" : "meter-bad"}`}

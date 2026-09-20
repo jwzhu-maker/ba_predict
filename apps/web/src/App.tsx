@@ -1,3 +1,4 @@
+import BankrollHeader from "./components/BankrollHeader";
 import HistoryScreen from "./screens/HistoryScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import SimulatorScreen from "./screens/SimulatorScreen";
@@ -18,9 +19,18 @@ export default function App() {
 
   return (
     <div className="app">
+      {/*
+        Sticky, and carrying the money. What you have and what the sitting
+        has cost you are the two numbers that should never be more than a
+        glance away — scrolling to the roads or the odds table used to take
+        both off screen, which is exactly when a player stops noticing.
+      */}
       <header className="app-header">
-        <h1>ba_predict</h1>
-        <p>Baccarat odds, honestly</p>
+        <div className="app-title">
+          <h1>ba_predict</h1>
+          <p>Baccarat odds, honestly</p>
+        </div>
+        <BankrollHeader />
       </header>
 
       <main className="app-main">

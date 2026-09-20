@@ -1,0 +1,86 @@
+import { BETTING_SYSTEMS } from "@ba-predict/engine";
+import { Card, Notice } from "./Primitives";
+import { useAppState, useDispatch, useMoney } from "../state/store";
+
+/**
+ * Choose the system to play before the first hand of the sitting.
+ *
+ * This is the first thing on the Strategies tab because it is the first
+ * decision of the day: the choice made here is what the Table tab's headline
+ * then instructs, and what a recorded result settles against. Nothing else on
+ * this screen changes what the app tells you to do — the replays and records
+ * below are measurement.
+ *
+ * "None" is the default and is not a lesser option: it is the app as an
+ * advisor, recommending the cheapest bet at a flat stake, which is the only
+ * approach here with nothing to go wrong in it.
+ */
+export default function StrategyPicker() {
+  const { activeSystem, session } = useAppState();
+  const dispatch = useDispatch();
+  const money = useMoney();
+
+  const active = BETTING_SYSTEMS.find((system) => system.id === activeSystem) ?? null;
+  const started = session.coups.length > session.shoeStartIndex;
+
+  return (
+    <Card
+      title="Playing tonight"
+      subtitle={active ? active.name : "No system — the app's own recommendation"}
+    >
+      <div className="chip-row" role="group" aria-label="Betting system">
+        <button
+          type="button"
+          className={`chip${activeSystem === null ? " chip-active" : ""}`}
+          aria-pressed={activeSystem === null}
+          onClick={() => dispatch({ type: "set-active-system", system: null })}
+        >
+          None
+        </button>
+        {BETTING_SYSTEMS.map((system) => (
+          <button
+            key={system.id}
+            type="button"
+            className={`chip${activeSystem === system.id ? " chip-active" : ""}`}
+            aria-pressed={activeSystem === system.id}
+            onClick={() => dispatch({ type: "set-active-system", system: system.id })}
+          >
+            {system.name}
+          </button>
+        ))}
+      </div>
+
+      {active ? (
+        <p className="prose">
+          <strong>{active.name}.</strong> {active.summary} Watch {active.defaults.lookback} hands,
+          then from hand {active.defaults.lookback + 1} back the opposite of the hand{" "}
+          {active.defaults.lookback} before it. Groups of {active.defaults.groupSize}, opening at{" "}
+          {money.format(active.defaults.baseStake)} and adding{" "}
+          {money.format(active.defaults.stakeStep)} after each win, stopping the group on its
+          first loss and the shoe after hand {active.defaults.lastHand}. Ties are deleted before
+          any of that is counted.
+        </p>
+      ) : (
+        <p className="prose">
+          No system. The Table tab recommends the cheapest bet available and stakes your flat
+          plan, which is what this app does when it is left to its own judgement.
+        </p>
+      )}
+
+      <p className="field-hint">
+        Whatever is chosen here is what the <strong>Bet</strong> card on the Table tab instructs,
+        and what a recorded result settles against. Change it between shoes rather than
+        mid-shoe: a system reads the hands before the current one, so switching part-way gives it
+        a history it did not play.
+      </p>
+
+      {active && started ? (
+        <Notice tone="warn">
+          This shoe is already {session.coups.length - session.shoeStartIndex} coups in.{" "}
+          {active.name} will read those hands as if it had been watching them, which is fine for
+          following the rule but means the hands before now were not staked by it.
+        </Notice>
+      ) : null}
+    </Card>
+  );
+}

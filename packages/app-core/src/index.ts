@@ -9,3 +9,4 @@ export * from "./strategy-record";
 export * from "./sparkline";
 export * from "./system-record";
 export * from "./system-copy";
+export * from "./table-call";

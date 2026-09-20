@@ -11,21 +11,31 @@ import {
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import ShoeRoads from "../components/ShoeRoads";
-import SystemNextBet from "../components/SystemNextBet";
 import Sparkline from "../components/Sparkline";
 import { Btn, Card, Chip, Hint, Notice, Row, Stat, useStyles } from "../components/ui";
-import { describeEdge } from "@ba-predict/app-core";
+import { callToWager, describeEdge } from "@ba-predict/app-core";
 import { formatOdds, formatPercent, formatUnits } from "../lib/format";
-import { useAdvice, useAppState, useDispatch, useMoney, useStats } from "../state/store";
+import {
+  useAdvice,
+  useAppState,
+  useDispatch,
+  useMoney,
+  useStats,
+  useTableCall,
+} from "../state/store";
 import { usePalette } from "../theme";
 
 export default function TableScreen() {
   const p = usePalette();
   const s = useStyles(p);
   const local = useLocalStyles();
-  const { session, pendingWager, cardEntry, lastSettlement } = useAppState();
+  const { session, pendingWager, cardEntry, lastSettlement, skipNextCoup } = useAppState();
   const dispatch = useDispatch();
   const advice = useAdvice();
+  // What the Bet card shows and what a recorded result settles against, so
+  // the two can never disagree about the money that moved.
+  const call = useTableCall();
+  const settling = pendingWager ?? callToWager(call);
   const stats = useStats();
   const money = useMoney();
 
@@ -36,15 +46,14 @@ export default function TableScreen() {
   const [manualBet, setManualBet] = useState<BetType>("banker");
   const [manualAmount, setManualAmount] = useState(session.bankroll.tableMin);
 
-  const profit = session.bankroll.bankroll - session.bankroll.startingBankroll;
   const unit = session.bankroll.unitSize || 1;
-  const needsCardCount = pendingWager?.bet === "big" || pendingWager?.bet === "small";
-  const needsBankerSix =
-    session.rules.bankerSixPayout !== null && pendingWager?.bet === "banker";
+  const needsCardCount = settling?.bet === "big" || settling?.bet === "small";
+  const needsBankerSix = session.rules.bankerSixPayout !== null && settling?.bet === "banker";
 
   const record = (outcome: Outcome) => {
     dispatch({
       type: "record-coup",
+      wager: callToWager(call),
       coup: {
         outcome,
         playerPair,
@@ -64,24 +73,12 @@ export default function TableScreen() {
     setManualAmount(Math.min(Math.max(next, 0), session.bankroll.tableMax));
   };
 
-  const onTable =
-    pendingWager?.bet === advice.bet && pendingWager?.amount === advice.amount;
-
   return (
     <View style={{ gap: 12 }}>
       <View style={local.bankroll}>
-        <View style={local.bankrollRow}>
-          <View>
-            <Text style={s.statLabel}>BANKROLL</Text>
-            <Text style={local.bankrollValue}>{money.format(session.bankroll.bankroll)}</Text>
-          </View>
-          <View style={{ alignItems: "flex-end" }}>
-            <Text style={s.statLabel}>SESSION</Text>
-            <Text style={[local.bankrollValue, { color: profit >= 0 ? p.accent : p.danger }]}>
-              {money.signed(profit)}
-            </Text>
-          </View>
-        </View>
+        {/* The two headline figures moved to the app header, where they stay
+            visible on every screen and through a scroll. Repeating them here
+            would be the same number twice on one screen. */}
         <Hint>
           Next stake {formatUnits(session.progression.units)}u ·{" "}
           {session.progression.id.replace(/-/g, " ")} · {stats.wagers} wagers
@@ -90,45 +87,71 @@ export default function TableScreen() {
 
       <View style={local.advice}>
         <Text style={local.kicker}>
-          {advice.action === "bet"
-            ? "BET"
-            : advice.action === "stop"
-              ? "STOP"
-              : advice.action === "shuffle"
-                ? "NEW SHOE"
-                : "SIT OUT"}
+          {call.source === "manual"
+            ? "YOUR BET"
+            : call.source === "skipped"
+              ? "SITTING OUT"
+              : (call.systemName ?? "BET").toUpperCase()}
         </Text>
-        {advice.action === "bet" && advice.bet ? (
+        {call.bet !== null ? (
           <>
-            <Text style={local.adviceBet}>{betLabel(advice.bet)}</Text>
+            <Text style={local.adviceBet}>{betLabel(call.bet)}</Text>
             <Text style={[local.adviceAmount, { color: p.accent }]}>
-              {money.format(advice.amount)}
+              {money.format(call.amount)}
             </Text>
-            <Hint>
-              {formatPercent(advice.valuations![advice.bet].houseEdge)} house edge · costs{" "}
-              {money.format(advice.expectedCost)} per coup on average
-            </Hint>
-            <Btn
-              label={onTable ? "On the table" : "Put it on the table"}
-              variant="primary"
-              disabled={onTable}
-              onPress={() =>
-                dispatch({
-                  type: "place-wager",
-                  wager: { bet: advice.bet!, amount: advice.amount },
-                })
-              }
-            />
+            {advice.valuations?.[call.bet] ? (
+              <Hint>
+                {formatPercent(advice.valuations[call.bet]!.houseEdge)} house edge · costs{" "}
+                {money.format(call.amount * advice.valuations[call.bet]!.houseEdge)} on this wager
+              </Hint>
+            ) : null}
+            {call.detail ? <Hint>{call.detail}</Hint> : null}
           </>
         ) : (
-          <Text style={[local.adviceBet, { color: p.muted, fontSize: 24 }]}>
-            {advice.action === "stop"
-              ? "Walk away"
-              : advice.action === "shuffle"
-                ? "Shoe exhausted"
-                : "No stake"}
-          </Text>
+          <>
+            <Text style={[local.adviceBet, { color: p.muted, fontSize: 24 }]}>No bet</Text>
+            {call.noBetReason ? <Hint>{call.noBetReason}</Hint> : null}
+          </>
         )}
+
+        <Text style={{ color: p.text, fontSize: 13, fontWeight: "600", marginTop: 8 }}>
+          {call.bet !== null
+            ? `Recording the result will settle ${money.format(call.amount)} on ${betLabel(call.bet)}.`
+            : "Recording the result will stake nothing."}
+        </Text>
+
+        {/* The only control here: betting the suggestion is the default path,
+            so the button is for the exception. */}
+        {call.bet !== null || skipNextCoup ? (
+          <Btn
+            label={skipNextCoup ? "Bet after all" : "I don't bet this time"}
+            variant={skipNextCoup ? "primary" : "danger"}
+            onPress={() => dispatch({ type: "skip-next-coup", skip: !skipNextCoup })}
+          />
+        ) : null}
+
+        {call.clipped && call.requestedAmount !== null ? (
+          <Notice tone="warn">
+            The ladder asks for {money.format(call.requestedAmount)} here, but the table maximum
+            is {money.format(call.amount)}. The amount above is what you can actually put on.
+          </Notice>
+        ) : null}
+
+        {call.unaffordable ? (
+          <Notice tone="warn">
+            That is more than your bankroll has left — this is the point at which the plan stops
+            being playable as written.
+          </Notice>
+        ) : null}
+        {call.engineSizes && advice.sizingReason ? (
+          <Hint>• {advice.sizingReason}</Hint>
+        ) : null}
+        {call.source === "system" && call.systemName ? (
+          <Hint>
+            • {call.systemName} is setting the side and the stake here, not the engine. It cannot
+            change what a bet costs — only how much and how often you bet.
+          </Hint>
+        ) : null}
         {advice.reasons.map((reason) => (
           <Hint key={reason}>• {reason}</Hint>
         ))}
@@ -179,7 +202,7 @@ export default function TableScreen() {
         {needsCardCount ? (
           <View style={{ gap: 6 }}>
             <Text style={s.fieldLabel}>
-              CARDS DEALT (NEEDED TO SETTLE {betLabel(pendingWager.bet).toUpperCase()})
+              CARDS DEALT (NEEDED TO SETTLE {betLabel(settling!.bet).toUpperCase()})
             </Text>
             <Row>
               {([4, 5, 6] as const).map((count) => (
@@ -221,7 +244,6 @@ export default function TableScreen() {
         </Row>
       </Card>
 
-      <SystemNextBet />
       <ShoeRoads />
 
       <Card title="Place a bet" subtitle="Or override the recommendation">
