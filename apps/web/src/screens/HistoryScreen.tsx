@@ -63,8 +63,8 @@ export default function HistoryScreen() {
         </div>
         {lifetime.totalWagered > 0 ? (
           <p className="field-hint">
-            You have staked {money.format(lifetime.totalWagered)} in total and kept{" "}
-            {money.signed(lifetime.netProfit)} of it.{" "}
+            You have staked {money.format(lifetime.totalWagered)} in total, for a net
+            result of {money.signed(lifetime.netProfit)}.{" "}
             {ahead
               ? "Being ahead over a handful of sessions is variance, not an edge — the long-run figure settles at the table's, around 1.06% against you on Banker."
               : "Over enough sessions that settles at the table's edge — around 1.06% if you have been betting Banker."}

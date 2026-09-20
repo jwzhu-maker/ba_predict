@@ -49,6 +49,53 @@ export interface MoneyFormatter {
 // rendered amount, so each currency's pair is built once and reused.
 const cache = new Map<string, MoneyFormatter>();
 
+/** The currency mark Intl would render for a code, or null if it cannot. */
+function currencyMark(code: string, display: "narrowSymbol" | "symbol"): string | null {
+  try {
+    const parts = new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: code,
+      currencyDisplay: display,
+    }).formatToParts(0);
+    return parts.find((part) => part.type === "currency")?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+let ambiguous: Set<string> | null = null;
+
+/**
+ * Codes whose narrow symbol is shared with another currency we offer.
+ *
+ * `narrowSymbol` is the nicer rendering — "RM" beats "MYR" — but on most
+ * English locales it collapses USD, SGD, HKD, TWD and AUD all to a bare "$".
+ * A bankroll that cannot say which dollar it is in is worse than a slightly
+ * clunkier mark, so those fall back to `symbol` (which gives "HK$", "NT$",
+ * "A$", "SGD") while the unambiguous ones keep their narrow form.
+ *
+ * Computed from the runtime's own locale, because which symbols collide
+ * depends on it.
+ */
+function isAmbiguous(code: string): boolean {
+  if (!ambiguous) {
+    const seen = new Map<string, string[]>();
+    for (const option of CURRENCIES) {
+      if (option.code === PLAIN_CURRENCY) continue;
+      const mark = currencyMark(option.code, "narrowSymbol");
+      if (!mark) continue;
+      const bucket = seen.get(mark);
+      if (bucket) bucket.push(option.code);
+      else seen.set(mark, [option.code]);
+    }
+    ambiguous = new Set<string>();
+    for (const [, codes] of seen) {
+      if (codes.length > 1) for (const collided of codes) ambiguous.add(collided);
+    }
+  }
+  return ambiguous.has(code);
+}
+
 function build(code: string): MoneyFormatter {
   const plainFormat = new Intl.NumberFormat(undefined, {
     minimumFractionDigits: 2,
@@ -57,15 +104,17 @@ function build(code: string): MoneyFormatter {
 
   let currencyFormat: Intl.NumberFormat | null = null;
   if (code !== PLAIN_CURRENCY) {
+    const display = isAmbiguous(code) ? "symbol" : "narrowSymbol";
     try {
       currencyFormat = new Intl.NumberFormat(undefined, {
         style: "currency",
         currency: code,
-        currencyDisplay: "narrowSymbol",
+        currencyDisplay: display,
       });
     } catch {
-      // An unknown code, or a runtime whose ICU lacks narrowSymbol. Either way
-      // an unlabelled number beats throwing while painting a bankroll.
+      // An unknown code, or a runtime whose ICU lacks this display mode.
+      // Either way an unlabelled number beats throwing while painting a
+      // bankroll.
       try {
         currencyFormat = new Intl.NumberFormat(undefined, {
           style: "currency",

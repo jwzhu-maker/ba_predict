@@ -1,6 +1,13 @@
 import { createSession, type SessionState } from "@ba-predict/engine";
 import { describe, expect, it } from "vitest";
-import { ARCHIVE_LIMIT, archiveSession, isArchivedSession, lifetimeStats } from "../archive";
+import {
+  ARCHIVE_LIMIT,
+  EMPTY_EVICTED,
+  archiveSession,
+  isArchivedSession,
+  lifetimeStats,
+  parseEvictedTotals,
+} from "../archive";
 import { createInitialState, reducer, type AppState } from "../reducer";
 import { deserializeState, serializeState } from "../storage";
 
@@ -334,5 +341,67 @@ describe("restoring a damaged archive", () => {
 
     const repaired = deserializeState(JSON.stringify({ ...state, evicted: "nonsense" }));
     expect(repaired.evicted.sessions).toBe(0);
+  });
+});
+
+describe("restoring evicted totals", () => {
+  it("accepts a well-formed block", () => {
+    const block = {
+      sessions: 3,
+      netProfit: -30,
+      totalWagered: 300,
+      wagers: 30,
+      wins: 10,
+      losses: 20,
+      pushes: 0,
+      coups: 30,
+      winningSessions: 1,
+      worstDrawdown: 40,
+      worstSession: -25,
+      bestSession: 5,
+    };
+    expect(parseEvictedTotals(block)).toEqual(block);
+  });
+
+  it("accepts nulls where the type allows them", () => {
+    const parsed = parseEvictedTotals({
+      sessions: 1,
+      netProfit: 0,
+      totalWagered: 10,
+      wagers: 1,
+      wins: 0,
+      losses: 0,
+      pushes: 1,
+      coups: 1,
+      winningSessions: 0,
+      worstDrawdown: 0,
+      worstSession: null,
+      bestSession: null,
+    });
+    expect(parsed.worstSession).toBeNull();
+    expect(parsed.bestSession).toBeNull();
+  });
+
+  it("discards a block with a non-numeric field rather than half-trusting it", () => {
+    // Spreading this over the defaults used to leave a string in `sessions`,
+    // which lifetimeStats then concatenates instead of adding.
+    const parsed = parseEvictedTotals({ ...EMPTY_EVICTED, sessions: "oops" });
+    expect(parsed).toEqual(EMPTY_EVICTED);
+    expect(parseEvictedTotals({ ...EMPTY_EVICTED, netProfit: null })).toEqual(EMPTY_EVICTED);
+    expect(parseEvictedTotals({ ...EMPTY_EVICTED, worstSession: "x" })).toEqual(EMPTY_EVICTED);
+    expect(parseEvictedTotals({ ...EMPTY_EVICTED, totalWagered: Number.NaN })).toEqual(EMPTY_EVICTED);
+    expect(parseEvictedTotals(null)).toEqual(EMPTY_EVICTED);
+    expect(parseEvictedTotals("nope")).toEqual(EMPTY_EVICTED);
+    expect(parseEvictedTotals({})).toEqual(EMPTY_EVICTED);
+  });
+
+  it("keeps lifetime arithmetic numeric after a corrupt restore", () => {
+    const restored = deserializeState(
+      JSON.stringify({ ...createInitialState(), evicted: { sessions: "oops" } }),
+    );
+    const totals = lifetimeStats(restored.archive, undefined, restored.evicted);
+    expect(typeof totals.sessions).toBe("number");
+    expect(totals.sessions).toBe(0);
+    expect(Number.isFinite(totals.netProfit)).toBe(true);
   });
 });

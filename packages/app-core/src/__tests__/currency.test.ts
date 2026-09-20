@@ -93,3 +93,42 @@ describe("sparkline geometry", () => {
     }
   });
 });
+
+describe("telling the dollars apart", () => {
+  /** The currency mark a formatted amount carries, with digits stripped out. */
+  const markOf = (code: string) =>
+    createMoneyFormatter(code)
+      .format(1000)
+      .replace(/[\d\s .,]/g, "");
+
+  it("gives every offered currency a distinct mark", () => {
+    // `narrowSymbol` alone renders USD, SGD, HKD, TWD and AUD all as a bare
+    // "$" on common English locales, so a bankroll cannot say which dollar
+    // it is in. Ambiguous codes fall back to `symbol`.
+    const seen = new Map<string, string>();
+    for (const option of CURRENCIES) {
+      if (option.code === PLAIN_CURRENCY) continue;
+      const mark = markOf(option.code);
+      expect(mark, `${option.code} rendered no currency mark`).not.toBe("");
+      const clash = seen.get(mark);
+      expect(clash, `${option.code} and ${clash} both render as "${mark}"`).toBeUndefined();
+      seen.set(mark, option.code);
+    }
+  });
+
+  it("keeps the friendlier narrow mark where nothing collides with it", () => {
+    // MYR is not ambiguous, so it should not be downgraded to its code.
+    expect(markOf("MYR")).toBe("RM");
+    expect(markOf("GBP")).toBe("£");
+    expect(markOf("USD")).toBe("$");
+  });
+
+  it("still formats an amount for every currency", () => {
+    for (const option of CURRENCIES) {
+      // Not pinned to "1,234": a zero-decimal currency like JPY correctly
+      // rounds 1234.5 to 1,235, which is the point of using Intl at all.
+      const formatted = createMoneyFormatter(option.code).format(1234.5);
+      expect(formatted, option.code).toMatch(/1[,. \s]?23[45]/);
+    }
+  });
+});

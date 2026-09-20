@@ -130,6 +130,53 @@ export const EMPTY_EVICTED: EvictedTotals = {
   bestSession: null,
 };
 
+const EVICTED_NUMERIC = [
+  "sessions",
+  "netProfit",
+  "totalWagered",
+  "wagers",
+  "wins",
+  "losses",
+  "pushes",
+  "coups",
+  "winningSessions",
+  "worstDrawdown",
+] as const;
+
+/**
+ * Read an `evicted` block back from storage, or fall back to empty.
+ *
+ * Spreading the stored object over the defaults was not validation: a
+ * `{ sessions: "oops" }` payload replaced a number with a string, and
+ * `lifetimeStats` then seeds its arithmetic from it and concatenates instead
+ * of adding. These are aggregates, so a partially valid one means nothing —
+ * the whole block is discarded rather than half-trusted.
+ */
+export function parseEvictedTotals(value: unknown): EvictedTotals {
+  if (typeof value !== "object" || value === null) return EMPTY_EVICTED;
+  const row = value as Record<string, unknown>;
+  if (!EVICTED_NUMERIC.every((field) => Number.isFinite(row[field]))) return EMPTY_EVICTED;
+  const nullableNumber = (candidate: unknown) =>
+    candidate === null || Number.isFinite(candidate);
+  if (!nullableNumber(row.worstSession) || !nullableNumber(row.bestSession)) {
+    return EMPTY_EVICTED;
+  }
+  return {
+    sessions: row.sessions as number,
+    netProfit: row.netProfit as number,
+    totalWagered: row.totalWagered as number,
+    wagers: row.wagers as number,
+    wins: row.wins as number,
+    losses: row.losses as number,
+    pushes: row.pushes as number,
+    coups: row.coups as number,
+    winningSessions: row.winningSessions as number,
+    worstDrawdown: row.worstDrawdown as number,
+    worstSession: (row.worstSession as number | null) ?? null,
+    bestSession: (row.bestSession as number | null) ?? null,
+  };
+}
+
 /** Fold a session about to be dropped into the running totals. */
 export function foldEvicted(totals: EvictedTotals, row: ArchivedSession): EvictedTotals {
   return {

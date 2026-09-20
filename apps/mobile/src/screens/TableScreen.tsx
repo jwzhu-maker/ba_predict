@@ -332,7 +332,9 @@ export default function TableScreen() {
         />
         {stats.totalWagered > 0 ? (
           <Hint>
-            You have paid {formatPercent(stats.actualEdge)} of everything you staked so far.
+            {stats.actualEdge >= 0
+              ? `You have paid ${formatPercent(stats.actualEdge)} of everything you staked so far.`
+              : `You are ahead by ${formatPercent(-stats.actualEdge)} of everything you staked so far.`}{" "}
             Over a long enough session that converges on the table's edge; over one session it
             is mostly luck in either direction.
           </Hint>
