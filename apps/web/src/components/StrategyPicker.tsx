@@ -23,11 +23,16 @@ export default function StrategyPicker() {
 
   const active = BETTING_SYSTEMS.find((system) => system.id === activeSystem) ?? null;
   const started = session.coups.length > session.shoeStartIndex;
+  // Once, not once as the render condition and again in the body.
+  const betRate = active ? describeBetRate(active.defaults) : null;
 
   return (
     <Card
       title="Playing tonight"
-      subtitle={active ? active.name : "No system — the app's own recommendation"}
+      // The definition's own one-line summary. The chip and the paragraph
+      // below both carry the name, so repeating it here spent the subtitle
+      // on nothing and left `summary` rendered in no client at all.
+      subtitle={active ? active.summary : "No system — the app's own recommendation"}
     >
       <div className="chip-row" role="group" aria-label="Betting system">
         <button
@@ -63,6 +68,22 @@ export default function StrategyPicker() {
       )}
 
       {/*
+        The one number that separates the systems on offer, derived rather
+        than written out: 16 hands or 48. A comparison paragraph naming them
+        would be wrong the day a third is added.
+
+        Immediately under the rule it elaborates, as on mobile. Below the
+        Observe toggle it read as commentary on observing.
+      */}
+      {betRate ? (
+        <p className="field-hint">
+          {betRate} Staking more does not cost more per unit &mdash; how often you bet has never
+          changed what a bet costs &mdash; but it does mean bigger swings either way, and a
+          bigger total loss at the same rate.
+        </p>
+      ) : null}
+
+      {/*
         Observing sits with the system choice because it is the same kind of
         decision — what this sitting is — and because the two interact: a
         system's call still shows in observe mode, it just never settles.
@@ -79,19 +100,6 @@ export default function StrategyPicker() {
           dispatch({ type: "set-table-mode", mode: checked ? "observe" : "play" })
         }
       />
-
-      {/*
-        The one number that separates the systems on offer, derived rather
-        than written out: 16 hands or 48. A comparison paragraph naming them
-        would be wrong the day a third is added.
-      */}
-      {active && describeBetRate(active.defaults) ? (
-        <p className="field-hint">
-          {describeBetRate(active.defaults)} Staking more does not cost more per unit &mdash; how
-          often you bet has never changed what a bet costs &mdash; but it does mean bigger swings
-          either way, and a bigger total loss at the same rate.
-        </p>
-      ) : null}
 
       <p className="field-hint">
         Whatever is chosen here is what the <strong>Bet</strong> card on the Table tab instructs,

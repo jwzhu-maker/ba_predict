@@ -1,4 +1,10 @@
-import { bettableHands, describeSystemRules, oddsOfReachingTopStep } from "@ba-predict/app-core";
+import {
+  bettableHands,
+  describeSystemRules,
+  expectedBetsPerGroup,
+  oddsOfReachingTopStep,
+  oddsOfTopStepPerHand,
+} from "@ba-predict/app-core";
 import { Card, Notice, Stat } from "./Primitives";
 import { formatPercent } from "../lib/format";
 import { useAppState, useMoney, useSystemRun } from "../state/store";
@@ -23,9 +29,11 @@ export default function SystemRun() {
 
   const possible = bettableHands(run);
   const gated = run.config.groupsGateBetting;
-  // With no system selected the Table tab follows the engine, so this card
-  // is showing what the default WOULD have done rather than what was played.
-  const preview = activeSystem === null ? " · not selected, shown for comparison" : "";
+  // Compared by id, not by `activeSystem === null`: the run falls back to
+  // the default for an unselected OR unrecognised id, and either way this
+  // card is then showing what that system WOULD have done rather than what
+  // was played.
+  const preview = run.id === activeSystem ? "" : " · not selected, shown for comparison";
 
   if (run.handsAvailable === 0) {
     return (
@@ -139,8 +147,8 @@ export default function SystemRun() {
         One shoe of hindsight, on the hands that actually came out. What repeats is the shape,
         not the total:{" "}
         {gated
-          ? `a group stops at its first loss, so it lands about two bets on average rather than ${run.config.groupSize}, and the top of the ladder is reached roughly once in ${oddsOfReachingTopStep(run.config.maxLadderSteps)} groups.`
-          : `every hand in the range is staked and the ladder resets on the first loss, so the top step comes up roughly once in ${oddsOfReachingTopStep(run.config.maxLadderSteps)} hands and the run is many small swings rather than a few big ones.`}
+          ? `a group stops at its first loss, so it lands about ${expectedBetsPerGroup(run.config).toFixed(1)} bets on average rather than ${run.config.groupSize}, and the top of the ladder is reached roughly once in ${oddsOfReachingTopStep(run.config.maxLadderSteps)} groups.`
+          : `every hand in the range is staked and the ladder resets on the first loss, so the top step comes up on roughly one hand in ${oddsOfTopStepPerHand(run.config.maxLadderSteps)} and the run is many small swings rather than a few big ones.`}
       </p>
     </Card>
   );

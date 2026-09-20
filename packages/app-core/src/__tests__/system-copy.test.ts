@@ -16,6 +16,7 @@ import {
   nextHandDetail,
   oddsOfCleanGroup,
   oddsOfReachingTopStep,
+  oddsOfTopStepPerHand,
   tieReconciliation,
   topStake,
 } from "../system-copy";
@@ -198,6 +199,56 @@ describe("system copy", () => {
     expect(oddsOfReachingTopStep(REVERSE_STREAK_FOUR_CONFIG.maxLadderSteps)).toBe(8);
   });
 
+  it("prices the top step PER HAND for a ladder that never sits out", () => {
+    // A different question, and the reason there are two functions: one in
+    // eight CLIMBS reaches rung four, but a climb is not a hand once every
+    // hand is bet. One in fifteen hands sits on the top rung.
+    expect(oddsOfTopStepPerHand(4)).toBe(15);
+    expect(oddsOfTopStepPerHand(6)).toBe(63);
+    expect(oddsOfTopStepPerHand(1)).toBe(1);
+  });
+
+  it("agrees with the engine on how often the top stake is actually placed", () => {
+    // Measured, because the card states this number to the player and the
+    // first version of it was wrong by a factor of two.
+    let seed = 0xd1ce >>> 0;
+    const random = () => {
+      seed = (seed + 0x6d2b79f5) >>> 0;
+      let t = seed;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+
+    const top = REVERSE_STREAK_FOUR_CONFIG.baseStake +
+      (REVERSE_STREAK_FOUR_CONFIG.maxLadderSteps - 1) * REVERSE_STREAK_FOUR_CONFIG.stakeStep;
+    let bets = 0;
+    let atTop = 0;
+    for (let shoe = 0; shoe < 2000; shoe += 1) {
+      let pattern = "";
+      for (let index = 0; index < 80; index += 1) {
+        const roll = random();
+        pattern += roll < 0.4586 ? "B" : roll < 0.9048 ? "P" : "T";
+      }
+      for (const hand of streak(pattern).hands) {
+        if (hand.bet === null) continue;
+        bets += 1;
+        if (hand.stake === top) atTop += 1;
+      }
+    }
+
+    const measured = bets / atTop;
+    const predicted = oddsOfTopStepPerHand(REVERSE_STREAK_FOUR_CONFIG.maxLadderSteps);
+    // Within 20%: the chain starts at the base every shoe and the range is
+    // only 48 hands, so the finite run sits a little above the stationary
+    // rate — but nowhere near the 8 the per-climb figure would claim.
+    expect(measured).toBeGreaterThan(predicted * 0.8);
+    expect(measured).toBeLessThan(predicted * 1.2);
+    expect(measured).toBeGreaterThan(
+      oddsOfReachingTopStep(REVERSE_STREAK_FOUR_CONFIG.maxLadderSteps) * 1.5,
+    );
+  });
+
   it("counts the hands each rule actually stakes", () => {
     expect(handsInRange(REVERSE_TWELVE_CONFIG)).toBe(48);
     // Bets until the first loss, capped at six: 2(1 - 1/64).
@@ -268,10 +319,23 @@ describe("system copy", () => {
   it("puts the coup number on the board on every hand, tie or no tie", () => {
     // Always present, and the same shape either way — the card reserves
     // room for this line, so it must not appear and disappear.
-    expect(tieReconciliation(run(`${WARMUP}BB`))).toBe("Coup 15 on the board — no ties yet.");
-    expect(tieReconciliation(run(`${WARMUP}BTB`))).toBe("Coup 16 on the board — 1 tie not counted.");
-    expect(tieReconciliation(run(`${WARMUP}TBTB`))).toBe("Coup 17 on the board — 2 ties not counted.");
-    // Hand 15 of the rule, coup 17 of the shoe: the whole point of the line.
+    // The number is the coup the NEXT hand will be, which is what the rest
+    // of the card is about. An earlier wording said "coup 17 on the board"
+    // with 16 marks dealt, sending a player counting the road looking for a
+    // mark that is not there yet.
+    expect(tieReconciliation(run(`${WARMUP}BB`))).toBe(
+      "Hand 15 is coup 15 of the shoe — no ties yet.",
+    );
+    expect(tieReconciliation(run(`${WARMUP}BTB`))).toBe(
+      "Hand 15 is coup 16 of the shoe — 1 tie not counted.",
+    );
+    expect(tieReconciliation(run(`${WARMUP}TBTB`))).toBe(
+      "Hand 15 is coup 17 of the shoe — 2 ties not counted.",
+    );
+    // The hand it names is the one the rest of the card describes, and the
+    // coup number is exactly one past the marks dealt.
     expect(run(`${WARMUP}TBTB`).next.hand).toBe(15);
+    expect(run("").handsAvailable + 1).toBe(1);
+    expect(tieReconciliation(run(""))).toBe("Hand 1 is coup 1 of the shoe — no ties yet.");
   });
 });

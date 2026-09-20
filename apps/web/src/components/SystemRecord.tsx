@@ -1,6 +1,6 @@
 import { Card, Notice, Stat } from "./Primitives";
 import { formatPercent } from "../lib/format";
-import { useMoney, useSystemRecord } from "../state/store";
+import { useAppState, useMoney, useSystemRecord } from "../state/store";
 
 /**
  * The selected system across every shoe this device has kept.
@@ -21,11 +21,21 @@ import { useMoney, useSystemRecord } from "../state/store";
  */
 export default function SystemRecord() {
   const record = useSystemRecord();
+  const { activeSystem } = useAppState();
   const money = useMoney();
+
+  // The same marker SystemRun carries directly above: with nothing
+  // selected this is the default system's record, and a shoes-ahead
+  // figure attributed to a rule the player declined is worse than no
+  // figure at all.
+  const preview = record.id === activeSystem ? "" : " · not selected, shown for comparison";
 
   if (record.shoesWithBets === 0) {
     return (
-      <Card title={`${record.name} record`} subtitle="Builds up as you finish shoes">
+      <Card
+        title={`${record.name} record`}
+        subtitle={`Builds up as you finish shoes${preview}`}
+      >
         <p className="prose">
           Every shoe you finish gets replayed through {record.name}. After a few dozen this shows
           how often it finishes a shoe ahead, and what it costs per unit staked.
@@ -40,7 +50,7 @@ export default function SystemRecord() {
   return (
     <Card
       title={`${record.name} record`}
-      subtitle={`${record.shoesWithBets} shoe${record.shoesWithBets === 1 ? "" : "s"} played, ${record.bets} bets`}
+      subtitle={`${record.shoesWithBets} shoe${record.shoesWithBets === 1 ? "" : "s"} played, ${record.bets} bets${preview}`}
     >
       <div className="system-result">
         <span className="field-label">{ahead ? "Ahead by" : "Down by"}</span>

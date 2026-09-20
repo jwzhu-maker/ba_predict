@@ -1355,8 +1355,8 @@ select {
  * Measured maxima with the reasoning folded (tallest state, per width):
  *
  *     320px   advice 395   says 260
- *     360px   advice 370   says 227
- *     375px   advice 358   says 227
+ *     360px   advice 370   says 243
+ *     375px   advice 358   says 243
  *     390px   advice 352   says 227
  *     430px   advice 352   says 227
  *
@@ -1373,8 +1373,8 @@ select {
  * stop. The line is now rendered on every hand (`tieReconciliation`), one
  * clause long, and the floor below covers it.
  *
- * 320px gets a tier of its own because only there does the card need a
- * fourth line; giving 360px the same floor would waste 33px on the width
+ * 320px gets a tier of its own because only there does the card need the
+ * extra line; giving 390px the same floor would waste 48px on the widths
  * most phones actually are.
  */
 :root {
@@ -1385,6 +1385,7 @@ select {
 @media (max-width: 375px) {
   :root {
     --advice-min-height: 420px;
+    --system-card-min-height: 260px;
   }
 }
 

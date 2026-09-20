@@ -22,11 +22,16 @@ export default function StrategyPicker() {
 
   const active = BETTING_SYSTEMS.find((system) => system.id === activeSystem) ?? null;
   const started = session.coups.length > session.shoeStartIndex;
+  // Once, not once as the render condition and again in the body.
+  const betRate = active ? describeBetRate(active.defaults) : null;
 
   return (
     <Card
       title="Playing tonight"
-      subtitle={active ? active.name : "No system — the app's own recommendation"}
+      // The definition's own one-line summary. The chip and the paragraph
+      // below both carry the name, so repeating it here spent the subtitle
+      // on nothing and left `summary` rendered in no client at all.
+      subtitle={active ? active.summary : "No system — the app's own recommendation"}
     >
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         <Chip
@@ -60,11 +65,11 @@ export default function StrategyPicker() {
         than written out: 16 hands or 48. A comparison paragraph naming them
         would be wrong the day a third is added.
       */}
-      {active && describeBetRate(active.defaults) ? (
+      {betRate ? (
         <Hint>
-          {describeBetRate(active.defaults)} Staking more does not cost more per unit — how often
-          you bet has never changed what a bet costs — but it does mean bigger swings either way,
-          and a bigger total loss at the same rate.
+          {betRate} Staking more does not cost more per unit — how often you bet has never
+          changed what a bet costs — but it does mean bigger swings either way, and a bigger
+          total loss at the same rate.
         </Hint>
       ) : null}
 

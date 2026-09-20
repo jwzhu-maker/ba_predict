@@ -7,7 +7,7 @@ import {
   type ProgressionId,
 } from "@ba-predict/engine";
 import { Linking, View } from "react-native";
-import { Btn, Card, Hint, Notice, NumberInput, Picker, Prose, Row, SwitchRow } from "../components/ui";
+import { Btn, Card, Hint, Notice, NumberInput, Picker, Prose, SwitchRow } from "../components/ui";
 import { useAppState, useDispatch } from "../state/store";
 
 export default function SettingsScreen() {

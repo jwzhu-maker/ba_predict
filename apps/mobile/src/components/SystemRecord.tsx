@@ -1,6 +1,6 @@
 import { Text, View } from "react-native";
 import { formatPercent } from "../lib/format";
-import { useMoney, useSystemRecord } from "../state/store";
+import { useAppState, useMoney, useSystemRecord } from "../state/store";
 import { usePalette } from "../theme";
 import { Card, Hint, Notice, Prose, Row, Stat, useStyles } from "./ui";
 
@@ -21,13 +21,23 @@ import { Card, Hint, Notice, Prose, Row, Stat, useStyles } from "./ui";
  */
 export default function SystemRecord() {
   const record = useSystemRecord();
+  const { activeSystem } = useAppState();
   const money = useMoney();
   const p = usePalette();
   const s = useStyles(p);
 
+  // The same marker SystemRun carries directly above: with nothing
+  // selected this is the default system's record, and a shoes-ahead
+  // figure attributed to a rule the player declined is worse than no
+  // figure at all.
+  const preview = record.id === activeSystem ? "" : " · not selected, shown for comparison";
+
   if (record.shoesWithBets === 0) {
     return (
-      <Card title={`${record.name} record`} subtitle="Builds up as you finish shoes">
+      <Card
+        title={`${record.name} record`}
+        subtitle={`Builds up as you finish shoes${preview}`}
+      >
         <Prose>
           Every shoe you finish gets replayed through {record.name}. After a few dozen this shows
           how often it finishes a shoe ahead, and what it costs per unit staked.
@@ -41,7 +51,7 @@ export default function SystemRecord() {
   return (
     <Card
       title={`${record.name} record`}
-      subtitle={`${record.shoesWithBets} shoe${record.shoesWithBets === 1 ? "" : "s"} played, ${record.bets} bets`}
+      subtitle={`${record.shoesWithBets} shoe${record.shoesWithBets === 1 ? "" : "s"} played, ${record.bets} bets${preview}`}
     >
       <View style={{ flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", gap: 10 }}>
         <Text style={s.fieldLabel}>{ahead ? "AHEAD BY" : "DOWN BY"}</Text>

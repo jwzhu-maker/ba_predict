@@ -1,5 +1,5 @@
 import { nextHandDetail, readSystemNext, tieReconciliation } from "@ba-predict/app-core";
-import { Text, View } from "react-native";
+import { Dimensions, Text, View } from "react-native";
 import { useAppState, useMoney, useSystemRun } from "../state/store";
 import { usePalette } from "../theme";
 import { Card, Hint, Notice, Prose } from "./ui";
@@ -25,6 +25,7 @@ export default function SystemNextBet() {
   const { run, finished } = useSystemRun();
   const money = useMoney();
   const p = usePalette();
+  const narrowPhone = Dimensions.get("window").width <= 340;
   const reading = readSystemNext(run);
   const next = run.next;
 
@@ -101,9 +102,21 @@ export default function SystemNextBet() {
 
   return (
     <Card
-      // Reserved so the Record buttons below do not move between coups; see
-      // the same note in the web stylesheet for how the number was derived.
-      style={{ minHeight: 200 }}
+      // Reserved so the Record buttons below do not move between coups.
+      //
+      // Mirrored from `--system-card-min-height` in the web stylesheet,
+      // which is where the derivation lives — the two cards render the same
+      // body helpers, so the same content drives both. It was left at the
+      // OLD web value when that one was re-measured after the tie
+      // reconciliation line became unconditional, at which point the floor
+      // stopped binding here and these buttons started moving again on
+      // mobile alone.
+      //
+      // Stated plainly: these numbers are the web measurement, not a
+      // measurement taken on a device. RN has no cascade and no media
+      // query, so the narrow tier is read off the window the same way the
+      // stylesheet reads it off the viewport.
+      style={{ minHeight: narrowPhone ? 275 : 260 }}
       title={`${run.name} says`}
       subtitle={finished ? "Last shoe" : `Hand ${next.hand} of this shoe, ties not counted`}
     >

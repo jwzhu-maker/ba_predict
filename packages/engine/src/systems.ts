@@ -116,7 +116,7 @@ export const BETTING_SYSTEMS: readonly BettingSystemDefinition[] = [
   {
     id: "reverse-streak-4",
     name: "Reverse Streak 4",
-    summary: "The same mirror on every hand: climb one step a win, back to the base after four or after any loss.",
+    summary: "The same mirror on every hand, climbing to four wins and resetting.",
     defaults: REVERSE_STREAK_FOUR_CONFIG,
   },
 ];

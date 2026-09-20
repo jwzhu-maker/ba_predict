@@ -79,6 +79,28 @@ export function oddsOfReachingTopStep(maxLadderSteps: number): number {
   return 2 ** Math.max(0, maxLadderSteps - 1);
 }
 
+/**
+ * How often the top step comes up per HAND on a ladder that never sits out.
+ *
+ * A different question from the one above, and using that answer here was
+ * wrong by a factor of two. `oddsOfReachingTopStep` counts CLIMBS: given a
+ * ladder starting at the base, one in eight reaches rung four. On a gated
+ * system a climb is a group, so "1 in 8" and "1 in 8 groups" agree. On an
+ * ungated one every hand is a bet and the ladder is a chain that resets on a
+ * loss AND after its last rung, so the share of HANDS at the top rung is its
+ * stationary probability:
+ *
+ *   p(k) = p(0) / 2^k for k = 0..n-1, and they sum to 1
+ *   => p(0) = 2^(n-1) / (2^n - 1), and p(n-1) = 1 / (2^n - 1)
+ *
+ * At four rungs that is 1 in 15, not 1 in 8 — the card was promising twice
+ * as many $400 bets a shoe as the rule can deliver. Checked against the
+ * engine over 4,000 shoes in `system-copy.test.ts`.
+ */
+export function oddsOfTopStepPerHand(maxLadderSteps: number): number {
+  return 2 ** Math.max(1, maxLadderSteps) - 1;
+}
+
 export function oddsOfCleanGroup(groupSize: number): number {
   return 2 ** Math.max(0, groupSize);
 }
@@ -190,9 +212,18 @@ export function describeBetRate(config: BettingSystemConfig): string | null {
  */
 export function tieReconciliation(run: SystemRun): string {
   const { tiesRemoved, next } = run;
+  // `next.hand` is the hand ABOUT TO BE DEALT, so this coup number is the
+  // mark the road is about to gain, not one already on it. Saying "coup 17
+  // on the board" sent a player counting marks looking for a seventeenth
+  // that is not there yet — on the very line whose job is to let them check
+  // the rule's numbering against the board.
   const coup = tiesRemoved + next.hand;
-  if (tiesRemoved === 0) return `Coup ${coup} on the board — no ties yet.`;
-  return `Coup ${coup} on the board — ${tiesRemoved} tie${tiesRemoved === 1 ? "" : "s"} not counted.`;
+  if (tiesRemoved === 0) {
+    return `Hand ${next.hand} is coup ${coup} of the shoe — no ties yet.`;
+  }
+  return `Hand ${next.hand} is coup ${coup} of the shoe — ${tiesRemoved} tie${
+    tiesRemoved === 1 ? "" : "s"
+  } not counted.`;
 }
 
 /**
