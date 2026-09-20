@@ -1,4 +1,4 @@
-import { describeEdge } from "@ba-predict/app-core";
+import { createInitialState, describeEdge } from "@ba-predict/app-core";
 import { PROGRESSIONS } from "@ba-predict/engine";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -19,12 +19,27 @@ import { usePalette } from "../theme";
  * current session into the list directly below them, so pressing one shows
  * its own result — and the Table tab keeps its whole height for the card
  * that says what to bet.
+ *
+ * "Erase everything" is here for the opposite reason. It was one mis-tap
+ * away in Settings, beside two routine and reversible buttons, and it wiped
+ * the History those buttons exist to fill without asking. Here it is last
+ * on the screen it destroys, behind the same two-tap arming as the row
+ * deletes above it, and its own warning says what goes.
  */
 export default function HistoryScreen() {
-  // Which row's X is armed, and whether the clear-all is. Both deletes are
-  // unrecoverable, so neither happens on a single tap.
+  // Which row's X is armed, whether the clear-all is, and whether the
+  // factory reset is. None of the three is recoverable, so none happens on
+  // a single tap — and arming one disarms the others, so two live
+  // confirmations can never sit on screen at once.
   const [confirming, setConfirming] = useState<string | null>(null);
   const [clearingAll, setClearingAll] = useState(false);
+  const [erasing, setErasing] = useState(false);
+
+  const disarm = () => {
+    setConfirming(null);
+    setClearingAll(false);
+    setErasing(false);
+  };
 
   const { archive } = useAppState();
   const dispatch = useDispatch();
@@ -50,13 +65,13 @@ export default function HistoryScreen() {
           <Btn label="Reset stake" onPress={() => dispatch({ type: "reset-session" })} />
         </Row>
         <Hint>
-          End session banks the night and carries your current balance into a new one. Reset
-          stake also files it, but puts the original starting bankroll back — for when you were
+          End session banks the night and carries your current balance into a new one. Reset stake
+          also files it, but puts the original starting bankroll back — for when you were
           experimenting rather than playing.
         </Hint>
         <Hint>
-          The New shoe button on the Table tab is the lighter one: it swaps the cards and leaves
-          the sitting — and the money — running across shoes.
+          The New shoe button on the Table tab is the lighter one: it swaps the cards and leaves the
+          sitting — and the money — running across shoes.
         </Hint>
       </Card>
 
@@ -93,8 +108,8 @@ export default function HistoryScreen() {
         </Row>
         {lifetime.totalWagered > 0 ? (
           <Hint>
-            You have staked {money.format(lifetime.totalWagered)} in total, for a net
-            result of {money.signed(lifetime.netProfit)}.{" "}
+            You have staked {money.format(lifetime.totalWagered)} in total, for a net result of{" "}
+            {money.signed(lifetime.netProfit)}.{" "}
             {ahead
               ? "Being ahead over a handful of sessions is variance, not an edge — the long-run figure settles at the table's, around 1.06% against you on Banker."
               : "Over enough sessions that settles at the table's edge — around 1.06% if you have been betting Banker."}
@@ -105,8 +120,8 @@ export default function HistoryScreen() {
       {sessions.length === 0 ? (
         <Card title="No closed sessions yet">
           <Prose>
-            End a session from Settings and it is filed here with what it cost. The current
-            session is already counted in the lifetime totals above.
+            End a session from Settings and it is filed here with what it cost. The current session
+            is already counted in the lifetime totals above.
           </Prose>
         </Card>
       ) : (
@@ -116,9 +131,7 @@ export default function HistoryScreen() {
               <View key={session.id} style={s.row}>
                 <View style={s.head}>
                   <Text style={s.date}>{formatDateTime(session.startedAt)}</Text>
-                  <Text
-                    style={[s.net, { color: session.netProfit >= 0 ? p.accent : p.danger }]}
-                  >
+                  <Text style={[s.net, { color: session.netProfit >= 0 ? p.accent : p.danger }]}>
                     {money.signed(session.netProfit)}
                   </Text>
                   {/* Two taps, not one: a delete here cannot be undone and
@@ -139,7 +152,10 @@ export default function HistoryScreen() {
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`Delete the session from ${formatDateTime(session.startedAt)}`}
-                      onPress={() => setConfirming(session.id)}
+                      onPress={() => {
+                        disarm();
+                        setConfirming(session.id);
+                      }}
                       hitSlop={8}
                       style={{ paddingHorizontal: 8, paddingVertical: 2 }}
                     >
@@ -149,8 +165,7 @@ export default function HistoryScreen() {
                 </View>
                 <Text style={s.meta}>
                   {name(session.progression)} · {session.wagers} wagers · {session.wins}W /{" "}
-                  {session.losses}L
-                  {session.pushes > 0 ? ` / ${session.pushes}P` : ""} · staked{" "}
+                  {session.losses}L{session.pushes > 0 ? ` / ${session.pushes}P` : ""} · staked{" "}
                   {money.format(session.totalWagered)} ·{" "}
                   {formatDuration(session.endedAt - session.startedAt)}
                 </Text>
@@ -163,8 +178,8 @@ export default function HistoryScreen() {
       {sessions.length > 0 ? (
         <Card title="Clear history">
           <Notice tone="warn">
-            This deletes every closed session on this device. It cannot be undone, and the
-            lifetime totals go with it.
+            This deletes every closed session on this device. It cannot be undone, and the lifetime
+            totals go with it.
           </Notice>
           <Btn
             label={
@@ -175,17 +190,46 @@ export default function HistoryScreen() {
             variant="danger"
             onPress={() => {
               if (!clearingAll) {
+                disarm();
                 setClearingAll(true);
                 return;
               }
               dispatch({ type: "clear-archive" });
-              setClearingAll(false);
-              setConfirming(null);
+              disarm();
             }}
           />
-          {clearingAll ? <Btn label="Cancel" onPress={() => setClearingAll(false)} /> : null}
+          {clearingAll ? <Btn label="Cancel" onPress={disarm} /> : null}
         </Card>
       ) : null}
+
+      {/*
+        Last on the screen it destroys, behind the same two-tap arming as
+        the deletes above. A `hydrate` rather than a storage wipe: the store
+        persists on every state change, so a fresh initial state overwrites
+        what is stored and leaves the app running — the same thing the web
+        client does.
+      */}
+      <Card title="Erase everything" subtitle="Back to a freshly installed app">
+        <Notice tone="warn">
+          This clears your table rules, currency, bankroll and limits, the shoe in progress, the
+          strategy you picked, every closed session and every kept shoe. It cannot be undone, and
+          nothing here is stored anywhere but this device, so there is no copy to restore from.
+        </Notice>
+        <Btn
+          label={erasing ? "Yes, erase everything" : "Erase everything"}
+          variant="danger"
+          onPress={() => {
+            if (!erasing) {
+              disarm();
+              setErasing(true);
+              return;
+            }
+            dispatch({ type: "hydrate", state: createInitialState() });
+            disarm();
+          }}
+        />
+        {erasing ? <Btn label="Cancel" onPress={disarm} /> : null}
+      </Card>
     </View>
   );
 }
