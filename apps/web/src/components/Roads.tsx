@@ -1,5 +1,6 @@
 import {
   askRoads,
+  derivedMarkLabel,
   layoutBigRoad,
   layoutDerivedRoad,
   type DerivedMark,
@@ -118,6 +119,23 @@ export function DerivedRoad({
  * conspicuous. Labelled for what it is: a statement about the pattern a result
  * would draw, not about which result is coming.
  */
+/**
+ * One cell of "Ask the road": the mark, and what it says in words.
+ *
+ * The word is the point. Colour alone cannot distinguish "both results draw
+ * the same mark" — a real and common answer — from a broken render, and it is
+ * also the only part of this cell a colour-blind reader can use.
+ */
+function AskMark({ mark, shape }: { mark: DerivedMark | undefined; shape: DerivedShape }) {
+  if (!mark) return <span className="muted">—</span>;
+  return (
+    <span className="ask-mark">
+      <span className={`derived derived-${shape} derived-${mark}`} aria-hidden="true" />
+      <span className="ask-mark-label">{derivedMarkLabel(mark)}</span>
+    </span>
+  );
+}
+
 export function AskTheRoad({ roads }: { roads: RoadSet }) {
   const ask = useMemo(() => askRoads(roads), [roads]);
   const rows: { label: string; shape: DerivedShape; player: readonly DerivedMark[]; banker: readonly DerivedMark[] }[] = [
@@ -140,30 +158,40 @@ export function AskTheRoad({ roads }: { roads: RoadSet }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.label}>
-              <th scope="row">{row.label}</th>
-              <td>
-                {row.player[0] ? (
-                  <span className={`derived derived-${row.shape} derived-${row.player[0]}`} aria-label={row.player[0]} />
-                ) : (
-                  <span className="muted">—</span>
-                )}
-              </td>
-              <td>
-                {row.banker[0] ? (
-                  <span className={`derived derived-${row.shape} derived-${row.banker[0]}`} aria-label={row.banker[0]} />
-                ) : (
-                  <span className="muted">—</span>
-                )}
-              </td>
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const player = row.player[0];
+            const banker = row.banker[0];
+            // The two columns agree about 40% of the time, which is a real
+            // answer and not a rendering fault — but two identical marks
+            // side by side are indistinguishable from one, so the row says
+            // so rather than leaving the reader to wonder.
+            const agree = player !== undefined && player === banker;
+            return (
+              <tr key={row.label}>
+                <th scope="row">
+                  {row.label}
+                  {agree ? <span className="row-note row-note-muted">same either way</span> : null}
+                </th>
+                <td>
+                  <AskMark mark={player} shape={row.shape} />
+                </td>
+                <td>
+                  <AskMark mark={banker} shape={row.shape} />
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       <p className="field-hint">
         This describes the shape the next result would make on the board. It carries no
         information about which result that will be — the cards do not read the scoreboard.
+      </p>
+      <p className="field-hint">
+        A row reading the same on both sides is the real answer, not a glitch. The two results
+        land in different places on the big road — one extends the current column, the other
+        starts a new one — so each is measured against a different column, and two different
+        comparisons often reach the same verdict.
       </p>
     </Card>
   );

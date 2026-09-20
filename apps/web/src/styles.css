@@ -1043,3 +1043,91 @@ select {
   color: var(--warn);
   white-space: normal;
 }
+
+/* ---------- betting systems ---------- */
+
+/*
+ * The system's call for the next hand. Side and stake read as one line
+ * because they are one instruction: this rule never says "Banker" without
+ * also saying how much, and showing them apart invites betting the right
+ * side off the wrong step of the ladder.
+ */
+.system-call {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-bottom: 6px;
+}
+
+.system-side {
+  font-size: 1.9rem;
+  font-weight: 750;
+  line-height: 1.05;
+}
+
+.system-side-player {
+  color: var(--player);
+}
+
+.system-side-banker {
+  color: var(--banker);
+}
+
+.system-stake {
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+/* The shoe's gain or loss: the number the whole card exists to produce. */
+.system-result {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-bottom: 12px;
+}
+
+.system-net {
+  font-size: 2.1rem;
+  font-weight: 750;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * A group's hand range is context, not a warning, so it must not borrow
+ * `.row-note`'s amber — that colour means "this plan broke down" everywhere
+ * else in the app.
+ */
+.row-note-muted {
+  color: var(--muted);
+}
+
+/*
+ * "Ask the road" cells: the mark with its verdict in words underneath.
+ *
+ * The word is load-bearing, not decoration. The two columns legitimately
+ * show the SAME mark about 40% of the time, and two identical dots side by
+ * side are indistinguishable from a broken render — the word is what makes
+ * agreement read as an answer. It is also the only part of the cell a
+ * colour-blind reader can use, on a board whose whole vocabulary is red
+ * versus blue.
+ */
+.ask-mark {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.ask-mark-label {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  white-space: nowrap;
+}

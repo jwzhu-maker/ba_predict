@@ -7,3 +7,5 @@ export * from "./replay";
 export * from "./shoe-archive";
 export * from "./strategy-record";
 export * from "./sparkline";
+export * from "./system-record";
+export * from "./system-copy";

@@ -11,6 +11,7 @@ import {
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import ShoeRoads from "../components/ShoeRoads";
+import SystemNextBet from "../components/SystemNextBet";
 import Sparkline from "../components/Sparkline";
 import { Btn, Card, Chip, Hint, Notice, Row, Stat, useStyles } from "../components/ui";
 import { describeEdge } from "@ba-predict/app-core";
@@ -220,6 +221,7 @@ export default function TableScreen() {
         </Row>
       </Card>
 
+      <SystemNextBet />
       <ShoeRoads />
 
       <Card title="Place a bet" subtitle="Or override the recommendation">

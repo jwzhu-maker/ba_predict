@@ -1,6 +1,7 @@
 import {
   createMoneyFormatter,
   aggregateStrategyRecord,
+  aggregateSystemRecord,
   isReplayableBet,
   lifetimeStats,
   replayStrategies,
@@ -8,16 +9,19 @@ import {
   type MoneyFormatter,
   type StrategyRecord,
   type StrategyReplay,
+  type SystemRecord,
 } from "@ba-predict/app-core";
 import {
   buildRoads,
   recommendBet,
+  runBettingSystem,
   sessionStats,
   summariseRoads,
   type Advice,
   type RoadSet,
   type RoadSummary,
   type SessionStats,
+  type SystemRun,
 } from "@ba-predict/engine";
 import {
   createContext,
@@ -172,6 +176,59 @@ export function useStrategyRecord(): StrategyRecord {
     session.progressionOptions,
     session.bankroll,
   ]);
+}
+
+/**
+ * The betting system run over the shoe on screen — the live one, or the one
+ * that just finished, exactly as `useShoeReplay` chooses.
+ *
+ * `finished` is what lets the card say "last shoe" rather than claiming the
+ * next bet applies to a shoe that is over.
+ */
+export function useSystemRun(): { run: SystemRun; finished: boolean } {
+  const { session } = useAppState();
+  return useMemo(() => {
+    const current = session.coups.slice(session.shoeStartIndex);
+    const previous =
+      session.previousShoeStartIndex === null
+        ? []
+        : session.coups.slice(session.previousShoeStartIndex, session.shoeStartIndex);
+    const finished = current.length === 0 && previous.length > 0;
+    const coups = current.length > 0 ? current : previous;
+    return {
+      finished,
+      run: runBettingSystem({
+        coups,
+        rules: session.rules,
+        tableMax: session.bankroll.tableMax > 0 ? session.bankroll.tableMax : null,
+        // Only the NEXT bet is judged against the balance; the replay behind
+        // it is hindsight and must not be re-cut to today's money.
+        bankroll: session.bankroll.bankroll,
+      }),
+    };
+  }, [
+    session.coups,
+    session.shoeStartIndex,
+    session.previousShoeStartIndex,
+    session.rules,
+    session.bankroll.tableMax,
+    session.bankroll.bankroll,
+  ]);
+}
+
+/** The same system totalled over every shoe this device has kept. */
+export function useSystemRecord(): SystemRecord {
+  const { session, shoeArchive } = useAppState();
+  return useMemo(
+    () =>
+      aggregateSystemRecord({
+        shoes: shoeArchive,
+        currentShoe: session.coups.slice(session.shoeStartIndex),
+        rules: session.rules,
+        tableMax: session.bankroll.tableMax > 0 ? session.bankroll.tableMax : null,
+      }),
+    [shoeArchive, session.coups, session.shoeStartIndex, session.rules, session.bankroll.tableMax],
+  );
 }
 
 export function useLifetime(): LifetimeStats {

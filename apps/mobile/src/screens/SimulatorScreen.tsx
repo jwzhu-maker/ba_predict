@@ -9,6 +9,8 @@ import { useState } from "react";
 import { View } from "react-native";
 import ShoeReplay from "../components/ShoeReplay";
 import StrategyRecord from "../components/StrategyRecord";
+import SystemRecord from "../components/SystemRecord";
+import SystemRun from "../components/SystemRun";
 import { Btn, Card, Hint, NumberInput, Picker, Row, Stat, SwitchRow } from "../components/ui";
 import { formatPercent, formatUnits } from "../lib/format";
 import { useAdvice, useAppState } from "../state/store";
@@ -68,6 +70,12 @@ export default function SimulatorScreen() {
 
   return (
     <View style={{ gap: 12 }}>
+      {/* Your own rule leads, because it is the one you are actually playing.
+          The ten built-in plans below are the comparison, not the headline. */}
+      <SystemRun />
+
+      <SystemRecord />
+
       <StrategyRecord />
 
       <ShoeReplay />

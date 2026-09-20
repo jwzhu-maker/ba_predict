@@ -22,6 +22,24 @@ export type BigRoadColumn = BigRoadCell[];
 /** Red means "the pattern repeated", blue means "it broke". */
 export type DerivedMark = "red" | "blue";
 
+/**
+ * What a derived mark says, in words.
+ *
+ * The colour alone is not enough on "Ask the road", where the two columns
+ * legitimately show the SAME mark about 40% of the time — two identical dots
+ * side by side read as a broken render rather than as the real answer. The
+ * word makes it a statement.
+ *
+ * Both columns agreeing is not a coincidence to be hidden: the two candidate
+ * results land in different places on the big road (one extends the current
+ * column, the other opens a new one), so `derivedMark` takes a DIFFERENT
+ * branch for each and compares different columns. Two independent
+ * comparisons can of course reach the same verdict.
+ */
+export function derivedMarkLabel(mark: DerivedMark): string {
+  return mark === "red" ? "Repeats" : "Breaks";
+}
+
 export interface DerivedRoads {
   bigEyeBoy: DerivedMark[];
   smallRoad: DerivedMark[];

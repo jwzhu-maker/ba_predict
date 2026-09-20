@@ -1,5 +1,6 @@
 import {
   askRoads,
+  derivedMarkLabel,
   layoutBigRoad,
   layoutDerivedRoad,
   type BigRoadCell,
@@ -232,9 +233,20 @@ export function AskTheRoad({ roads }: { roads: RoadSet }) {
     { label: "Cockroach pig", shape: "slash", player: ask.player.cockroachPig[0], banker: ask.banker.cockroachPig[0] },
   ];
 
+  /*
+   * The mark with its verdict in words underneath. The word is the point:
+   * the two columns legitimately show the SAME mark about 40% of the time,
+   * and two identical dots side by side are indistinguishable from a broken
+   * render. It is also the only part a colour-blind reader can use.
+   */
   const dot = (value: DerivedMark | undefined, shape: DerivedShape, key: string) =>
     value ? (
-      derivedMarkNode(value, shape, s, p, key)
+      <View style={{ alignItems: "flex-start", gap: 1 }}>
+        {derivedMarkNode(value, shape, s, p, key)}
+        <Text style={{ color: p.muted, fontSize: 10, fontWeight: "600" }}>
+          {derivedMarkLabel(value)}
+        </Text>
+      </View>
     ) : (
       <Text style={{ color: p.muted }}>—</Text>
     );
@@ -251,17 +263,33 @@ export function AskTheRoad({ roads }: { roads: RoadSet }) {
             IF BANKER
           </Text>
         </View>
-        {rows.map((row) => (
-          <View key={row.label} style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text style={{ flex: 1, color: p.text, fontSize: 13 }}>{row.label}</Text>
-            <View style={{ width: 70 }}>{dot(row.player, row.shape, `${row.label}-p`)}</View>
-            <View style={{ width: 70 }}>{dot(row.banker, row.shape, `${row.label}-b`)}</View>
-          </View>
-        ))}
+        {rows.map((row) => {
+          // Agreement is a real answer, not a rendering fault, so the row
+          // says so rather than leaving the reader to wonder.
+          const agree = row.player !== undefined && row.player === row.banker;
+          return (
+            <View key={row.label} style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: p.text, fontSize: 13 }}>{row.label}</Text>
+                {agree ? (
+                  <Text style={{ color: p.muted, fontSize: 10 }}>same either way</Text>
+                ) : null}
+              </View>
+              <View style={{ width: 70 }}>{dot(row.player, row.shape, `${row.label}-p`)}</View>
+              <View style={{ width: 70 }}>{dot(row.banker, row.shape, `${row.label}-b`)}</View>
+            </View>
+          );
+        })}
       </View>
       <Hint>
         This describes the shape the next result would make on the board. It carries no
         information about which result that will be — the cards do not read the scoreboard.
+      </Hint>
+      <Hint>
+        A row reading the same on both sides is the real answer, not a glitch. The two results
+        land in different places on the big road — one extends the current column, the other
+        starts a new one — so each is measured against a different column, and two different
+        comparisons often reach the same verdict.
       </Hint>
     </Card>
   );
