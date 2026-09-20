@@ -37,7 +37,7 @@ If gambling has stopped being entertainment, see
 
 ```bash
 npm install          # required after any package.json change, before any build
-npm test             # 128 tests across the engine and shared app state
+npm test             # 158 tests across the engine and shared app state
 npm run typecheck    # engine, app-core, web, mobile
 npm run dev:web      # PWA on http://localhost:5173
 npm run dev:mobile   # Expo
@@ -53,13 +53,14 @@ Node 20+ (developed on 22).
 | **Table** | What to bet, how much, and what it costs. Records each coup, tracks the bankroll, and prices all eight bets. |
 | **Roads** | Bead plate, big road (with the dragon tail), big eye boy, small road, cockroach pig, and "ask the road". |
 | **Simulate** | Plays a staking plan out thousands of times: how often you finish ahead, how bad the bad night is, and what edge you actually paid. |
-| **Settings** | Table rules, bankroll, unit size, limits, staking plan. |
+| **History** | Every closed session, and the lifetime total. One session is luck; the lifetime cost is where the edge shows up. |
+| **Settings** | Table rules, currency, bankroll, unit size, limits, staking plan. |
 
 ## Layout
 
 ```
 packages/engine/     the whole domain: odds, EV, Kelly, progressions, roads, risk
-packages/app-core/   the app-state reducer and persistence format, shared by both clients
+packages/app-core/   reducer, persistence, session archive, currency, sparkline geometry
 apps/web/            React 19 + Vite PWA (offline-capable, installable)
 apps/mobile/         Expo / React Native
 scripts/             icon generation
@@ -140,14 +141,39 @@ npm run dev:mobile
 either cannot resolve the shared packages or resolves two copies of React. The
 Android bundle is verified to build in CI.
 
-Not yet done on mobile: the bankroll sparkline. Everything else is at parity.
+Both clients are at feature parity. The bankroll curve's geometry comes from
+`buildSparkline` in `app-core`, so web (inline `<svg>`) and mobile
+(`react-native-svg`) draw the identical shape for identical numbers.
+
+## Sessions, money and history
+
+A **session** is one sitting. Closing it files it under History with what it
+cost, and there are two ways to close, differing only in what the next one
+opens with:
+
+- **End session** carries your current balance forward, so the new session's
+  profit starts at zero. This is the normal "done for tonight" flow.
+- **Reset stake** puts the original starting bankroll back, for when you were
+  experimenting rather than playing.
+
+A session with no wagers is never filed — an untouched session is not a night
+out, and empty rows would bury the one figure the screen exists for.
+
+**Currency** is a display setting (`packages/app-core/src/currency.ts`). It
+labels the numbers and converts nothing. It reaches the advice text too: the
+advisor takes a `formatAmount` callback rather than fixing two decimal places
+internally, so "you are up RM 200.00" cannot end up beside a bankroll rendered
+some other way.
+
+The **lifetime cost** on the History screen is the point of keeping any of
+this. A single session is mostly variance in either direction; across enough
+of them the figure settles on the table's edge, and watching that happen with
+your own numbers is more convincing than being told it will.
 
 ## Known gaps
 
-- **Currency is unlabelled.** Amounts are plain numbers; there is no currency
-  selector.
-- **No session history.** The app keeps the current session and the current
-  shoe, not a log across days.
+- **No cloud sync.** Everything is on one device. Clearing site data or
+  uninstalling takes the history with it, and there is no export yet.
 - **Card tracking is manual and optional.** Skipping it is not a degraded mode:
   unseen cards leave the shoe in the proportions it already holds, so the
   untracked numbers are the correct estimate. Tracking sharpens them by a

@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { STORAGE_KEY, createInitialState } from "@ba-predict/app-core";
+import { CURRENCIES, STORAGE_KEY, createInitialState } from "@ba-predict/app-core";
 import {
   BET_TYPES,
   PROGRESSIONS,
@@ -12,7 +12,7 @@ import { Btn, Card, Hint, Notice, NumberInput, Picker, Prose, Row, SwitchRow } f
 import { useAppState, useDispatch } from "../state/store";
 
 export default function SettingsScreen() {
-  const { session } = useAppState();
+  const { session, currency } = useAppState();
   const dispatch = useDispatch();
   const { rules, bankroll } = session;
 
@@ -86,6 +86,13 @@ export default function SettingsScreen() {
       </Card>
 
       <Card title="Money" subtitle="Everything else is derived from these">
+        <Picker
+          label="Currency"
+          value={currency}
+          options={CURRENCIES.map((option) => ({ value: option.code, label: option.label }))}
+          hint="Display only — it labels the numbers and does not convert anything."
+          onChange={(next: string) => dispatch({ type: "set-currency", currency: next })}
+        />
         <NumberInput
           label="Bankroll"
           value={bankroll.bankroll}
@@ -179,11 +186,21 @@ export default function SettingsScreen() {
         />
       </Card>
 
-      <Card title="Start over">
+      <Card title="Start over" subtitle="Ending a session files it under History">
         <Row>
           <Btn label="New shoe" onPress={() => dispatch({ type: "new-shoe" })} />
-          <Btn label="Reset session" onPress={() => dispatch({ type: "reset-session" })} />
+          <Btn
+            label="End session"
+            variant="primary"
+            onPress={() => dispatch({ type: "end-session" })}
+          />
+          <Btn label="Reset stake" onPress={() => dispatch({ type: "reset-session" })} />
         </Row>
+        <Hint>
+          End session banks the night and carries your current balance into a new one. Reset
+          stake also files it, but puts the original starting bankroll back — for when you were
+          experimenting rather than playing.
+        </Hint>
         <Btn
           label="Erase everything"
           variant="danger"

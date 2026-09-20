@@ -33,6 +33,10 @@ export function deserializeState(raw: string | null | undefined): AppState {
       ...initial,
       ...parsed,
       session: { ...initial.session, ...parsed.session },
+      // Guard the two collections a corrupt payload could turn into something
+      // the screens then iterate over.
+      archive: Array.isArray(parsed.archive) ? parsed.archive : [],
+      currency: typeof parsed.currency === "string" ? parsed.currency : initial.currency,
       // Undo history is deliberately not restored: it is a stack of whole
       // sessions, and "undo across a relaunch" is not a promise worth making.
       history: [],

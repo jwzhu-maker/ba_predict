@@ -1,7 +1,6 @@
 import { betLabel, type Outcome } from "@ba-predict/engine";
 import { useState } from "react";
-import { formatMoney } from "../lib/format";
-import { useAppState, useDispatch } from "../state/store";
+import { useAppState, useDispatch, useMoney } from "../state/store";
 import { Card, Notice } from "./Primitives";
 
 /**
@@ -15,6 +14,7 @@ import { Card, Notice } from "./Primitives";
 export default function CoupEntry() {
   const { session, pendingWager, lastSettlement } = useAppState();
   const dispatch = useDispatch();
+  const money = useMoney();
 
   const [playerPair, setPlayerPair] = useState(false);
   const [bankerPair, setBankerPair] = useState(false);
@@ -47,7 +47,7 @@ export default function CoupEntry() {
       title="Record the result"
       subtitle={
         pendingWager
-          ? `${formatMoney(pendingWager.amount)} on ${betLabel(pendingWager.bet)}`
+          ? `${money.format(pendingWager.amount)} on ${betLabel(pendingWager.bet)}`
           : "No wager on the table — this only updates the road"
       }
     >

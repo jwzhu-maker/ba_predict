@@ -1,6 +1,6 @@
 import { betLabel } from "@ba-predict/engine";
-import { formatMoney, formatPercent } from "../lib/format";
-import { useAdvice, useAppState, useDispatch } from "../state/store";
+import { formatPercent } from "../lib/format";
+import { useAdvice, useAppState, useDispatch, useMoney } from "../state/store";
 import { Notice } from "./Primitives";
 
 const HEADLINE: Record<string, string> = {
@@ -19,6 +19,7 @@ const HEADLINE: Record<string, string> = {
  */
 export default function AdviceCard() {
   const advice = useAdvice();
+  const money = useMoney();
   const dispatch = useDispatch();
   const { pendingWager } = useAppState();
 
@@ -35,10 +36,10 @@ export default function AdviceCard() {
       {advice.action === "bet" && advice.bet ? (
         <>
           <p className="advice-bet">{betLabel(advice.bet)}</p>
-          <p className="advice-amount">{formatMoney(advice.amount)}</p>
+          <p className="advice-amount">{money.format(advice.amount)}</p>
           <p className="advice-cost">
             {formatPercent(advice.valuations![advice.bet].houseEdge)} house edge &middot; costs{" "}
-            {formatMoney(advice.expectedCost)} per coup on average
+            {money.format(advice.expectedCost)} per coup on average
           </p>
           <button
             type="button"

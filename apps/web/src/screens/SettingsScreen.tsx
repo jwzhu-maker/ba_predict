@@ -1,3 +1,4 @@
+import { CURRENCIES } from "@ba-predict/app-core";
 import {
   BET_TYPES,
   PROGRESSIONS,
@@ -10,7 +11,7 @@ import { clearState } from "../state/persistence";
 import { useAppState, useDispatch } from "../state/store";
 
 export default function SettingsScreen() {
-  const { session } = useAppState();
+  const { session, currency } = useAppState();
   const dispatch = useDispatch();
   const { rules, bankroll } = session;
 
@@ -92,6 +93,25 @@ export default function SettingsScreen() {
       </Card>
 
       <Card title="Money" subtitle="Everything else is derived from these">
+        <div className="field">
+          <span className="field-label">Currency</span>
+          <select
+            className="input"
+            value={currency}
+            onChange={(event) =>
+              dispatch({ type: "set-currency", currency: event.target.value })
+            }
+          >
+            {CURRENCIES.map((option) => (
+              <option key={option.code} value={option.code}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <span className="field-hint">
+            Display only — it labels the numbers and does not convert anything.
+          </span>
+        </div>
         <div className="field-grid">
           <NumberField
             label="Bankroll"
@@ -212,17 +232,27 @@ export default function SettingsScreen() {
         />
       </Card>
 
-      <Card title="Start over">
+      <Card
+        title="Start over"
+        subtitle="Ending a session files it under History"
+      >
         <div className="button-row">
           <button type="button" className="button" onClick={() => dispatch({ type: "new-shoe" })}>
             New shoe
           </button>
           <button
             type="button"
+            className="button button-primary"
+            onClick={() => dispatch({ type: "end-session" })}
+          >
+            End session
+          </button>
+          <button
+            type="button"
             className="button"
             onClick={() => dispatch({ type: "reset-session" })}
           >
-            Reset session
+            Reset stake
           </button>
           <button
             type="button"
@@ -235,6 +265,11 @@ export default function SettingsScreen() {
             Erase everything
           </button>
         </div>
+        <p className="field-hint">
+          <strong>End session</strong> banks the night and carries your current balance into a
+          new one. <strong>Reset stake</strong> also files it, but puts the original starting
+          bankroll back — for when you were experimenting rather than playing.
+        </p>
         <p className="field-hint">
           Everything is stored on this device only. There is no account and no server — nothing
           you record here leaves your phone.

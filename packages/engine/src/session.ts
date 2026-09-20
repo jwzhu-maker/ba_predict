@@ -105,6 +105,8 @@ export function settleWager(
 }
 
 export interface SessionState {
+  /** Epoch ms when this session was opened. Carried so an archived session can be dated. */
+  startedAt: number;
   rules: TableRules;
   shoe: ShoeState;
   bankroll: BankrollState;
@@ -122,6 +124,8 @@ export interface CreateSessionOptions {
   progressionOptions?: Partial<ProgressionOptions>;
   preferredBet?: BetType | "auto";
   kellyMultiplier?: number;
+  /** Override the clock. Only tests should need this. */
+  startedAt?: number;
 }
 
 export const DEFAULT_BANKROLL: BankrollState = {
@@ -143,6 +147,7 @@ export function createSession(options: CreateSessionOptions = {}): SessionState 
     ...options.progressionOptions,
   };
   return {
+    startedAt: options.startedAt ?? Date.now(),
     rules,
     shoe: createShoe(rules.decks),
     bankroll,

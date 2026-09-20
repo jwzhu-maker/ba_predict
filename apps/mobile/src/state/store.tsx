@@ -2,11 +2,15 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   STORAGE_KEY,
   createInitialState,
+  createMoneyFormatter,
   deserializeState,
+  lifetimeStats,
   reducer,
   serializeState,
   type Action,
   type AppState,
+  type LifetimeStats,
+  type MoneyFormatter,
 } from "@ba-predict/app-core";
 import {
   buildRoads,
@@ -84,6 +88,7 @@ export function useDispatch(): Dispatch<Action> {
 
 export function useAdvice(): Advice {
   const { session } = useAppState();
+  const money = useMoney();
   return useMemo(
     () =>
       recommendBet({
@@ -94,6 +99,9 @@ export function useAdvice(): Advice {
         progressionOptions: session.progressionOptions,
         preferredBet: session.preferredBet,
         kellyMultiplier: session.kellyMultiplier,
+        // So the amounts inside the advice text carry the same currency as
+        // the amounts beside it.
+        formatAmount: money.format,
       }),
     [
       session.shoe,
@@ -103,8 +111,20 @@ export function useAdvice(): Advice {
       session.progressionOptions,
       session.preferredBet,
       session.kellyMultiplier,
+      money,
     ],
   );
+}
+
+/** The money formatter for the currently chosen currency. */
+export function useMoney(): MoneyFormatter {
+  const { currency } = useAppState();
+  return useMemo(() => createMoneyFormatter(currency), [currency]);
+}
+
+export function useLifetime(): LifetimeStats {
+  const { archive, session } = useAppState();
+  return useMemo(() => lifetimeStats(archive, session), [archive, session]);
 }
 
 export function useRoads(): { roads: RoadSet; summary: RoadSummary } {

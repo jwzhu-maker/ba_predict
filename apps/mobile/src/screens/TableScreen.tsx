@@ -10,9 +10,10 @@ import {
 } from "@ba-predict/engine";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import Sparkline from "../components/Sparkline";
 import { Btn, Card, Chip, Hint, Notice, Row, Stat, useStyles } from "../components/ui";
-import { formatMoney, formatOdds, formatPercent, formatSigned, formatUnits } from "../lib/format";
-import { useAdvice, useAppState, useDispatch, useStats } from "../state/store";
+import { formatOdds, formatPercent, formatUnits } from "../lib/format";
+import { useAdvice, useAppState, useDispatch, useMoney, useStats } from "../state/store";
 import { usePalette } from "../theme";
 
 export default function TableScreen() {
@@ -23,6 +24,7 @@ export default function TableScreen() {
   const dispatch = useDispatch();
   const advice = useAdvice();
   const stats = useStats();
+  const money = useMoney();
 
   const [playerPair, setPlayerPair] = useState(false);
   const [bankerPair, setBankerPair] = useState(false);
@@ -68,12 +70,12 @@ export default function TableScreen() {
         <View style={local.bankrollRow}>
           <View>
             <Text style={s.statLabel}>BANKROLL</Text>
-            <Text style={local.bankrollValue}>{formatMoney(session.bankroll.bankroll)}</Text>
+            <Text style={local.bankrollValue}>{money.format(session.bankroll.bankroll)}</Text>
           </View>
           <View style={{ alignItems: "flex-end" }}>
             <Text style={s.statLabel}>SESSION</Text>
             <Text style={[local.bankrollValue, { color: profit >= 0 ? p.accent : p.danger }]}>
-              {formatSigned(profit)}
+              {money.signed(profit)}
             </Text>
           </View>
         </View>
@@ -97,11 +99,11 @@ export default function TableScreen() {
           <>
             <Text style={local.adviceBet}>{betLabel(advice.bet)}</Text>
             <Text style={[local.adviceAmount, { color: p.accent }]}>
-              {formatMoney(advice.amount)}
+              {money.format(advice.amount)}
             </Text>
             <Hint>
               {formatPercent(advice.valuations![advice.bet].houseEdge)} house edge · costs{" "}
-              {formatMoney(advice.expectedCost)} per coup on average
+              {money.format(advice.expectedCost)} per coup on average
             </Hint>
             <Btn
               label={onTable ? "On the table" : "Put it on the table"}
@@ -138,7 +140,7 @@ export default function TableScreen() {
         title="Record the result"
         subtitle={
           pendingWager
-            ? `${formatMoney(pendingWager.amount)} on ${betLabel(pendingWager.bet)}`
+            ? `${money.format(pendingWager.amount)} on ${betLabel(pendingWager.bet)}`
             : "No wager on the table — this only updates the road"
         }
       >
@@ -230,7 +232,7 @@ export default function TableScreen() {
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           <Btn label="−5u" onPress={() => adjust(-5)} />
           <Btn label="−1u" onPress={() => adjust(-1)} />
-          <Text style={local.stepperValue}>{formatMoney(manualAmount)}</Text>
+          <Text style={local.stepperValue}>{money.format(manualAmount)}</Text>
           <Btn label="+1u" onPress={() => adjust(1)} />
           <Btn label="+5u" onPress={() => adjust(5)} />
         </View>
@@ -238,12 +240,12 @@ export default function TableScreen() {
           <Hint>
             {betLabel(manualBet)} costs {formatPercent(advice.valuations[manualBet].houseEdge)} of
             every unit staked — about{" "}
-            {formatMoney(manualAmount * advice.valuations[manualBet].houseEdge)} on this wager.
+            {money.format(manualAmount * advice.valuations[manualBet].houseEdge)} on this wager.
           </Hint>
         ) : null}
         <Row>
           <Btn
-            label={`Place ${formatMoney(manualAmount)}`}
+            label={`Place ${money.format(manualAmount)}`}
             variant="primary"
             disabled={manualAmount <= 0 || manualAmount > session.bankroll.bankroll}
             onPress={() =>
@@ -312,18 +314,29 @@ export default function TableScreen() {
           <Stat label="Coups" value={String(stats.coups)} />
           <Stat label="Wagers" value={String(stats.wagers)} />
           <Stat label="Won / lost" value={`${stats.wins} / ${stats.losses}`} />
-          <Stat label="Staked" value={formatMoney(stats.totalWagered)} />
+          <Stat label="Staked" value={money.format(stats.totalWagered)} />
           <Stat
             label="Net"
-            value={formatSigned(stats.netProfit)}
+            value={money.signed(stats.netProfit)}
             tone={stats.netProfit >= 0 ? "good" : "bad"}
           />
           <Stat
             label="Drawdown"
-            value={formatMoney(stats.maxDrawdown)}
+            value={money.format(stats.maxDrawdown)}
             tone={stats.maxDrawdown > 0 ? "bad" : "muted"}
           />
         </Row>
+        <Sparkline
+          values={stats.bankrollCurve}
+          baseline={session.bankroll.startingBankroll}
+        />
+        {stats.totalWagered > 0 ? (
+          <Hint>
+            You have paid {formatPercent(stats.actualEdge)} of everything you staked so far.
+            Over a long enough session that converges on the table's edge; over one session it
+            is mostly luck in either direction.
+          </Hint>
+        ) : null}
       </Card>
 
       <Card

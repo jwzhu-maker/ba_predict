@@ -6,12 +6,13 @@ import OddsTable from "../components/OddsTable";
 import { Card, Stat } from "../components/Primitives";
 import Sparkline from "../components/Sparkline";
 import WagerControls from "../components/WagerControls";
-import { formatMoney, formatPercent, formatSigned } from "../lib/format";
-import { useAppState, useStats } from "../state/store";
+import { formatPercent } from "../lib/format";
+import { useAppState, useMoney, useStats } from "../state/store";
 
 export default function TableScreen() {
   const { session } = useAppState();
   const stats = useStats();
+  const money = useMoney();
 
   return (
     <div className="screen">
@@ -30,15 +31,15 @@ export default function TableScreen() {
             value={`${stats.wins} / ${stats.losses}`}
             hint={stats.pushes > 0 ? `${stats.pushes} pushed` : undefined}
           />
-          <Stat label="Total staked" value={formatMoney(stats.totalWagered)} />
+          <Stat label="Total staked" value={money.format(stats.totalWagered)} />
           <Stat
             label="Net"
-            value={formatSigned(stats.netProfit)}
+            value={money.signed(stats.netProfit)}
             tone={stats.netProfit >= 0 ? "good" : "bad"}
           />
           <Stat
             label="Worst drawdown"
-            value={formatMoney(stats.maxDrawdown)}
+            value={money.format(stats.maxDrawdown)}
             tone={stats.maxDrawdown > 0 ? "bad" : "muted"}
           />
         </div>

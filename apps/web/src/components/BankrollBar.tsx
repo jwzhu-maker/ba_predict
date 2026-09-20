@@ -1,9 +1,10 @@
-import { formatMoney, formatPercent, formatSigned, formatUnits } from "../lib/format";
-import { useAppState, useStats } from "../state/store";
+import { formatPercent, formatUnits } from "../lib/format";
+import { useAppState, useMoney, useStats } from "../state/store";
 
 export default function BankrollBar() {
   const { session } = useAppState();
   const stats = useStats();
+  const money = useMoney();
   const profit = session.bankroll.bankroll - session.bankroll.startingBankroll;
   const { stopWin, stopLoss } = session.bankroll;
 
@@ -21,12 +22,12 @@ export default function BankrollBar() {
       <div className="bankroll-row">
         <div>
           <span className="bankroll-label">Bankroll</span>
-          <span className="bankroll-value">{formatMoney(session.bankroll.bankroll)}</span>
+          <span className="bankroll-value">{money.format(session.bankroll.bankroll)}</span>
         </div>
         <div className="bankroll-right">
           <span className="bankroll-label">Session</span>
           <span className={`bankroll-value ${profit >= 0 ? "good" : "bad"}`}>
-            {formatSigned(profit)}
+            {money.signed(profit)}
           </span>
         </div>
       </div>

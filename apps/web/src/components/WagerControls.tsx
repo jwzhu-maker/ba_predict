@@ -1,7 +1,7 @@
 import { BET_TYPES, betLabel, type BetType } from "@ba-predict/engine";
 import { useState } from "react";
-import { formatMoney, formatPercent } from "../lib/format";
-import { useAdvice, useAppState, useDispatch } from "../state/store";
+import { formatPercent } from "../lib/format";
+import { useAdvice, useAppState, useDispatch, useMoney } from "../state/store";
 import { Card } from "./Primitives";
 
 /** Place a wager by hand when you are not taking the recommendation. */
@@ -9,6 +9,7 @@ export default function WagerControls() {
   const { session, pendingWager } = useAppState();
   const advice = useAdvice();
   const dispatch = useDispatch();
+  const money = useMoney();
   const unit = session.bankroll.unitSize || 1;
 
   const [bet, setBet] = useState<BetType>(advice.bet ?? "banker");
@@ -44,7 +45,7 @@ export default function WagerControls() {
         <button type="button" className="button" onClick={() => adjust(-1)} aria-label="Less one unit">
           −1u
         </button>
-        <output className="stepper-value">{formatMoney(amount)}</output>
+        <output className="stepper-value">{money.format(amount)}</output>
         <button type="button" className="button" onClick={() => adjust(1)} aria-label="Plus one unit">
           +1u
         </button>
@@ -56,7 +57,7 @@ export default function WagerControls() {
       {edge !== undefined ? (
         <p className="field-hint">
           {betLabel(bet)} costs {formatPercent(edge)} of every unit staked &mdash; about{" "}
-          {formatMoney(amount * edge)} on this wager.
+          {money.format(amount * edge)} on this wager.
         </p>
       ) : null}
 
@@ -67,7 +68,7 @@ export default function WagerControls() {
           disabled={amount <= 0 || amount > session.bankroll.bankroll}
           onClick={() => dispatch({ type: "place-wager", wager: { bet, amount } })}
         >
-          Place {formatMoney(amount)}
+          Place {money.format(amount)}
         </button>
         <button
           type="button"

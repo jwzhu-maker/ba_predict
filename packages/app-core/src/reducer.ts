@@ -13,8 +13,10 @@ import {
 } from "@ba-predict/engine";
 import { createShoe } from "@ba-predict/engine";
 import type { BankrollState } from "@ba-predict/engine";
+import { ARCHIVE_LIMIT, archiveSession, type ArchivedSession } from "./archive";
+import { DEFAULT_CURRENCY } from "./currency";
 
-export type Screen = "table" | "roads" | "simulator" | "settings";
+export type Screen = "table" | "roads" | "simulator" | "history" | "settings";
 
 export interface AppState {
   session: SessionState;
@@ -26,6 +28,10 @@ export interface AppState {
   pendingWager: PlacedWager | null;
   /** Result of the most recent settlement, so the UI can report a partial one. */
   lastSettlement: Settlement | null;
+  /** Closed sessions, oldest first. */
+  archive: ArchivedSession[];
+  /** ISO 4217 code, or PLAIN for unlabelled numbers. */
+  currency: string;
   screen: Screen;
 }
 
@@ -38,6 +44,8 @@ export function createInitialState(): AppState {
     cardEntry: [],
     pendingWager: null,
     lastSettlement: null,
+    archive: [],
+    currency: DEFAULT_CURRENCY,
     screen: "table",
   };
 }
@@ -52,6 +60,9 @@ export type Action =
   | { type: "undo" }
   | { type: "new-shoe" }
   | { type: "reset-session" }
+  | { type: "end-session"; now?: number }
+  | { type: "clear-archive" }
+  | { type: "set-currency"; currency: string }
   | { type: "update-rules"; rules: Partial<TableRules> }
   | { type: "update-bankroll"; bankroll: Partial<BankrollState> }
   | { type: "set-progression"; progression: ProgressionId }
@@ -78,6 +89,44 @@ function syncProgressionOptions(session: SessionState): SessionState {
       : null;
   if (session.progressionOptions.maxUnits === maxUnits) return session;
   return { ...session, progressionOptions: { ...session.progressionOptions, maxUnits } };
+}
+
+/**
+ * Archive the running session and open a fresh one.
+ *
+ * Undo history is dropped rather than carried: undo restores a session
+ * snapshot but knows nothing about the archive, so an "undo" across this
+ * boundary would hand back the old session while leaving its archived copy in
+ * place — and the next close would file it twice.
+ */
+function closeSession(
+  state: AppState,
+  options: { carryBankroll: boolean; now: number },
+): AppState {
+  const { rules, bankroll, progression, preferredBet, kellyMultiplier } = state.session;
+  const archived = archiveSession(state.session, options.now);
+  const archive = archived ? [...state.archive, archived] : state.archive;
+  const opening = options.carryBankroll ? bankroll.bankroll : bankroll.startingBankroll;
+
+  return {
+    ...state,
+    session: syncProgressionOptions(
+      createSession({
+        rules,
+        bankroll: { ...bankroll, bankroll: opening, startingBankroll: opening },
+        progression: progression.id,
+        preferredBet,
+        kellyMultiplier,
+        startedAt: options.now,
+      }),
+    ),
+    history: [],
+    cardEntry: [],
+    pendingWager: null,
+    lastSettlement: null,
+    archive:
+      archive.length > ARCHIVE_LIMIT ? archive.slice(archive.length - ARCHIVE_LIMIT) : archive,
+  };
 }
 
 export function reducer(state: AppState, action: Action): AppState {
@@ -144,22 +193,22 @@ export function reducer(state: AppState, action: Action): AppState {
         lastSettlement: null,
       };
 
-    case "reset-session": {
-      const { rules, bankroll, progression, preferredBet, kellyMultiplier } = state.session;
-      return {
-        ...createInitialState(),
-        session: syncProgressionOptions({
-          ...createSession({
-            rules,
-            bankroll: { ...bankroll, bankroll: bankroll.startingBankroll },
-            progression: progression.id,
-            preferredBet,
-            kellyMultiplier,
-          }),
-        }),
-        screen: state.screen,
-      };
-    }
+    // Two ways to close a session, and they differ in one thing: what the
+    // next one opens with. "End" banks the night and carries the money you
+    // actually have forward, so the new session's profit starts at zero.
+    // "Reset" puts the original stake back, which is what you want after
+    // experimenting rather than playing.
+    case "end-session":
+      return closeSession(state, { carryBankroll: true, now: action.now ?? Date.now() });
+
+    case "reset-session":
+      return closeSession(state, { carryBankroll: false, now: Date.now() });
+
+    case "clear-archive":
+      return { ...state, archive: [] };
+
+    case "set-currency":
+      return { ...state, currency: action.currency };
 
     case "update-rules": {
       const rules = { ...state.session.rules, ...action.rules };
