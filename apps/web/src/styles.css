@@ -673,42 +673,49 @@ select {
 }
 
 /*
- * The two staking-plan tables (strategy record, shoe replay) carry the
- * longest row headers in the app — "Reverse D'Alembert", "Grand Martingale" —
- * next to three numeric columns, and `white-space: nowrap` on every cell
- * makes the table's min-content width larger than a phone. `.table-scroll`
- * then hides the overflow behind a sideways scroll with no affordance, and
- * the column that goes is the LAST one: "Per unit", which is the one the
- * copy under both tables tells you to read.
+ * Tables whose row header is a NAME beside numeric columns must not push
+ * their last column off a phone.
  *
- * Measured at 320/360/390px the tables wanted 386px in a 266-336px holder.
- * So here the text columns wrap and the numbers do not: a plan name breaks
- * over two lines, "Shoes won" and "Per unit" stack their words, and every
+ * `.odds-table` sets `white-space: nowrap` on every cell, so a table whose
+ * row headers are long strings — "Reverse D'Alembert", "Grand Martingale",
+ * "Banker Pair" — has a min-content width larger than a phone, and
+ * `width: 100%` cannot shrink below it. `.table-scroll` then hides the
+ * excess behind a sideways scroll with no affordance, and what goes is the
+ * RIGHTMOST column. On all three tables that column is the one the screen
+ * exists for: "Per unit" on the two staking-plan tables, "House edge" on
+ * the bet costs.
+ *
+ * Measured before the fix, at 320/360/390px viewports: the plan tables
+ * wanted 386px in a 266-336px holder, and the odds table overflowed at 320
+ * and 360.
+ *
+ * So here the text columns wrap and the numbers do not: a row header breaks
+ * over two lines, a multi-word column header stacks its words, and every
  * figure stays on one line where a tabular column needs it.
  */
-.odds-table-plans {
+.odds-table-fluid {
   table-layout: auto;
 }
 
-.odds-table-plans th,
-.odds-table-plans td {
+.odds-table-fluid th,
+.odds-table-fluid td {
   padding-left: 4px;
   padding-right: 4px;
 }
 
 /* Headers and the plan name wrap; the figures never do. */
-.odds-table-plans thead th,
-.odds-table-plans tbody th {
+.odds-table-fluid thead th,
+.odds-table-fluid tbody th {
   white-space: normal;
 }
 
-.odds-table-plans tbody th {
+.odds-table-fluid tbody th {
   /* Keep the name column from eating the figures it is there to explain. */
   width: 38%;
   hyphens: auto;
 }
 
-.odds-table-plans tbody td {
+.odds-table-fluid tbody td {
   white-space: nowrap;
 }
 

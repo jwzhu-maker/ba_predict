@@ -45,7 +45,7 @@ export default function ShoeReplay() {
       subtitle={`${replay.coups} coups, every plan betting ${betLabel(replay.bet)}`}
     >
       <div className="table-scroll">
-        <table className="odds-table odds-table-plans">
+        <table className="odds-table odds-table-fluid">
           <thead>
             <tr>
               <th scope="col">Plan</th>
