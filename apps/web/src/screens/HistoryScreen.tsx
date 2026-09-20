@@ -1,4 +1,5 @@
 import { describeEdge } from "@ba-predict/app-core";
+import { useState } from "react";
 import { PROGRESSIONS } from "@ba-predict/engine";
 import { Card, Notice, Stat } from "../components/Primitives";
 import { formatDateTime, formatDuration, formatPercent, formatUnits } from "../lib/format";
@@ -12,6 +13,11 @@ import { useAppState, useDispatch, useLifetime, useMoney } from "../state/store"
  * the top and it is stated as a cost rather than a "win rate".
  */
 export default function HistoryScreen() {
+  // Which row's X has been armed, and whether the clear-all is armed. Both
+  // deletes are unrecoverable, so neither happens on a single tap.
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [clearingAll, setClearingAll] = useState(false);
+
   const { archive } = useAppState();
   const dispatch = useDispatch();
   const lifetime = useLifetime();
@@ -87,6 +93,41 @@ export default function HistoryScreen() {
                   <span className={session.netProfit >= 0 ? "good" : "bad"}>
                     {money.signed(session.netProfit)}
                   </span>
+                  {/*
+                    Two taps, not one. A delete here is unrecoverable and the
+                    X sits a thumb's width from the row you were reading, so
+                    the first tap only arms it.
+                  */}
+                  {confirming === session.id ? (
+                    <span className="session-confirm">
+                      <button
+                        type="button"
+                        className="button button-danger button-tiny"
+                        onClick={() => {
+                          dispatch({ type: "delete-session", id: session.id });
+                          setConfirming(null);
+                        }}
+                      >
+                        Delete
+                      </button>
+                      <button
+                        type="button"
+                        className="button button-tiny"
+                        onClick={() => setConfirming(null)}
+                      >
+                        Keep
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="session-delete"
+                      aria-label={`Delete the session from ${formatDateTime(session.startedAt)}`}
+                      onClick={() => setConfirming(session.id)}
+                    >
+                      &times;
+                    </button>
+                  )}
                 </div>
                 <div className="session-row-meta">
                   <span>{name(session.progression)}</span>
@@ -110,13 +151,32 @@ export default function HistoryScreen() {
             This deletes every closed session on this device. It cannot be undone, and the
             lifetime totals go with it.
           </Notice>
-          <button
-            type="button"
-            className="button button-danger"
-            onClick={() => dispatch({ type: "clear-archive" })}
-          >
-            Delete {sessions.length} session{sessions.length === 1 ? "" : "s"}
-          </button>
+          {clearingAll ? (
+            <div className="button-row">
+              <button
+                type="button"
+                className="button button-danger"
+                onClick={() => {
+                  dispatch({ type: "clear-archive" });
+                  setClearingAll(false);
+                  setConfirming(null);
+                }}
+              >
+                Yes, delete all {sessions.length}
+              </button>
+              <button type="button" className="button" onClick={() => setClearingAll(false)}>
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="button button-danger"
+              onClick={() => setClearingAll(true)}
+            >
+              Delete {sessions.length} session{sessions.length === 1 ? "" : "s"}
+            </button>
+          )}
         </Card>
       ) : null}
     </div>

@@ -1,3 +1,4 @@
+import { lifetimeStats } from "../archive";
 import type { PlacedWager } from "@ba-predict/engine";
 import { createShoe, cardsRemaining } from "@ba-predict/engine";
 import { describe, expect, it } from "vitest";
@@ -313,5 +314,83 @@ describe("the skip and the system choice are per coup, not forever", () => {
     expect(deserializeState('{"session":null}').tableMode).toBe("play");
     const state = { ...createInitialState(), tableMode: "nonsense" } as unknown as AppState;
     expect(deserializeState(serializeState(state)).tableMode).toBe("play");
+  });
+});
+
+describe("deleting one archived session", () => {
+  /** Close two sessions so there is an archive to delete from. */
+  function withTwoSessions(): AppState {
+    let state = createInitialState();
+    let clock = 1_000_000;
+    for (const bet of ["banker", "player"] as const) {
+      state = reducer(state, { type: "place-wager", wager: { bet, amount: 20 } });
+      state = reducer(state, {
+        type: "record-coup",
+        now: (clock += 1000),
+        coup: { outcome: "banker", playerPair: false, bankerPair: false },
+      });
+      state = reducer(state, { type: "end-session", now: (clock += 1000) });
+    }
+    return state;
+  }
+
+  it("never files two sessions under the same id", () => {
+    // The id is `${startedAt}-${endedAt}`, so two sittings closed in the
+    // same millisecond used to collide — harmless as a React key, but now
+    // a delete BY id would take both rows.
+    let state = createInitialState();
+    for (let i = 0; i < 3; i += 1) {
+      state = reducer(state, { type: "place-wager", wager: { bet: "banker", amount: 20 } });
+      state = reducer(state, {
+        type: "record-coup",
+        now: 5_000,
+        coup: { outcome: "banker", playerPair: false, bankerPair: false },
+      });
+      state = reducer(state, { type: "end-session", now: 5_000 });
+    }
+    const ids = state.archive.map((row) => row.id);
+    expect(ids).toHaveLength(3);
+    expect(new Set(ids).size).toBe(3);
+
+    // ...and deleting one takes exactly one.
+    const after = reducer(state, { type: "delete-session", id: ids[0]! });
+    expect(after.archive).toHaveLength(2);
+  });
+
+  it("removes only the named row", () => {
+    const state = withTwoSessions();
+    expect(state.archive).toHaveLength(2);
+    const target = state.archive[0]!.id;
+    const after = reducer(state, { type: "delete-session", id: target });
+    expect(after.archive).toHaveLength(1);
+    expect(after.archive.map((row) => row.id)).not.toContain(target);
+  });
+
+  it("takes the row's numbers out of the lifetime totals exactly once", () => {
+    // `lifetimeStats` sums the archive and ADDS `evicted`, so dropping the
+    // row is the whole job — subtracting from `evicted` as well would
+    // remove its figures twice and could drive the lifetime total negative.
+    const state = withTwoSessions();
+    const before = lifetimeStats(state.archive, undefined, state.evicted);
+    const removed = state.archive[0]!;
+    const after = reducer(state, { type: "delete-session", id: removed.id });
+    const now = lifetimeStats(after.archive, undefined, after.evicted);
+
+    expect(now.sessions).toBe(before.sessions - 1);
+    expect(now.totalWagered).toBeCloseTo(before.totalWagered - removed.totalWagered, 8);
+    expect(now.netProfit).toBeCloseTo(before.netProfit - removed.netProfit, 8);
+    expect(now.wagers).toBe(before.wagers - removed.wagers);
+    expect(after.evicted).toBe(state.evicted);
+  });
+
+  it("is a no-op for an id that is not there, and keeps the same object", () => {
+    const state = withTwoSessions();
+    expect(reducer(state, { type: "delete-session", id: "nope" })).toBe(state);
+  });
+
+  it("survives a round trip through storage", () => {
+    const state = withTwoSessions();
+    const after = reducer(state, { type: "delete-session", id: state.archive[0]!.id });
+    expect(deserializeState(serializeState(after)).archive).toHaveLength(1);
   });
 });

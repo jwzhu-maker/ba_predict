@@ -100,6 +100,9 @@ export default function SystemNextBet() {
 
   return (
     <Card
+      // Reserved so the Record buttons below do not move between coups; see
+      // the same note in the web stylesheet for how the number was derived.
+      style={{ minHeight: 200 }}
       title={`${run.name} says`}
       subtitle={finished ? "Last shoe" : `Hand ${next.hand} of this shoe, ties not counted`}
     >

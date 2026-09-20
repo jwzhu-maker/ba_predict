@@ -1,6 +1,7 @@
 import { describeEdge } from "@ba-predict/app-core";
 import { PROGRESSIONS } from "@ba-predict/engine";
-import { StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Btn, Card, Hint, Notice, Prose, Row, Stat } from "../components/ui";
 import { formatDateTime, formatDuration, formatPercent, formatUnits } from "../lib/format";
 import { useAppState, useDispatch, useLifetime, useMoney } from "../state/store";
@@ -14,6 +15,11 @@ import { usePalette } from "../theme";
  * and it is stated as a cost rather than a win rate.
  */
 export default function HistoryScreen() {
+  // Which row's X is armed, and whether the clear-all is. Both deletes are
+  // unrecoverable, so neither happens on a single tap.
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [clearingAll, setClearingAll] = useState(false);
+
   const { archive } = useAppState();
   const dispatch = useDispatch();
   const lifetime = useLifetime();
@@ -89,6 +95,31 @@ export default function HistoryScreen() {
                   >
                     {money.signed(session.netProfit)}
                   </Text>
+                  {/* Two taps, not one: a delete here cannot be undone and
+                      the X sits beside the figures you were reading. */}
+                  {confirming === session.id ? (
+                    <View style={{ flexDirection: "row", gap: 6 }}>
+                      <Btn
+                        label="Delete"
+                        variant="danger"
+                        onPress={() => {
+                          dispatch({ type: "delete-session", id: session.id });
+                          setConfirming(null);
+                        }}
+                      />
+                      <Btn label="Keep" onPress={() => setConfirming(null)} />
+                    </View>
+                  ) : (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete the session from ${formatDateTime(session.startedAt)}`}
+                      onPress={() => setConfirming(session.id)}
+                      hitSlop={8}
+                      style={{ paddingHorizontal: 8, paddingVertical: 2 }}
+                    >
+                      <Text style={{ color: p.muted, fontSize: 18, lineHeight: 20 }}>×</Text>
+                    </Pressable>
+                  )}
                 </View>
                 <Text style={s.meta}>
                   {name(session.progression)} · {session.wagers} wagers · {session.wins}W /{" "}
@@ -110,10 +141,23 @@ export default function HistoryScreen() {
             lifetime totals go with it.
           </Notice>
           <Btn
-            label={`Delete ${sessions.length} session${sessions.length === 1 ? "" : "s"}`}
+            label={
+              clearingAll
+                ? `Yes, delete all ${sessions.length}`
+                : `Delete ${sessions.length} session${sessions.length === 1 ? "" : "s"}`
+            }
             variant="danger"
-            onPress={() => dispatch({ type: "clear-archive" })}
+            onPress={() => {
+              if (!clearingAll) {
+                setClearingAll(true);
+                return;
+              }
+              dispatch({ type: "clear-archive" });
+              setClearingAll(false);
+              setConfirming(null);
+            }}
           />
+          {clearingAll ? <Btn label="Cancel" onPress={() => setClearingAll(false)} /> : null}
         </Card>
       ) : null}
     </View>

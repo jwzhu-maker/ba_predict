@@ -1281,3 +1281,117 @@ select {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* ---------- deleting a session ---------- */
+
+/*
+ * The X sits inside the row it deletes, a thumb's width from the figures
+ * you were reading, and a delete here cannot be undone — so the first tap
+ * only arms it and the row asks.
+ */
+.session-delete {
+  appearance: none;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--muted);
+  font-size: 1.15rem;
+  line-height: 1;
+  padding: 2px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-left: 4px;
+}
+
+.session-delete:hover,
+.session-delete:focus-visible {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+
+.session-confirm {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 4px;
+}
+
+.button-tiny {
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  min-height: 0;
+}
+
+/* ---------- a stable Table tab ---------- */
+
+/*
+ * Reserve the Bet card's and the system card's tallest state, so the
+ * Player/Banker/Tie buttons below them do not move between coups.
+ *
+ * Those two cards change shape on every hand — a live call adds an amount,
+ * a cost line, a detail line and the skip button; a warm-up or a dead group
+ * drops all four. Measured across the states at 390px, the Record card's
+ * buttons travelled between y=657 and y=880: 223px, under a thumb that is
+ * aiming for the same place each time.
+ *
+ * A flat reservation at the old heights pushed those buttons to y=930 —
+ * stable, but further down than the worst case had been, which is the wrong
+ * trade on a phone. Folding the engine's reasoning into "Why this" (it is
+ * the same text every hand) took ~150px off the Bet card first, so what is
+ * reserved below is roughly what the card actually needs.
+ *
+ * Measured maxima with the reasoning folded (tallest state, per width):
+ *
+ *     320px   advice 389   says 207
+ *     360px   advice 370   says 191
+ *     390px   advice 352   says 191
+ *     430px   advice 352   says 191
+ *
+ * The reservations carry ~30px over the widest measurement, because a state
+ * that overflows the floor puts the movement straight back. Re-derive them
+ * if either card gains a row; the cost is whitespace in the short states,
+ * which is the trade being asked for.
+ */
+:root {
+  --advice-min-height: 385px;
+  --system-card-min-height: 200px;
+}
+
+@media (max-width: 375px) {
+  :root {
+    --advice-min-height: 420px;
+    --system-card-min-height: 220px;
+  }
+}
+
+.advice {
+  min-height: var(--advice-min-height);
+}
+
+.card-system-says {
+  min-height: var(--system-card-min-height);
+}
+
+/*
+ * "Why this" folds the engine's reasoning away. The lines do not change
+ * hand to hand, and open they cost this card ~130px of reserved height on
+ * the screen where reaching the Record buttons matters most.
+ */
+.advice-why {
+  margin-top: 10px;
+}
+
+.advice-why > summary {
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 4px 0;
+  list-style-position: inside;
+}
+
+.advice-why > summary:hover {
+  color: var(--text);
+}
+
+.advice-why .advice-reasons {
+  margin-top: 4px;
+}

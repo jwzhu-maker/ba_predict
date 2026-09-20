@@ -120,6 +120,7 @@ export type Action =
   | { type: "new-shoe"; now?: number }
   | { type: "reset-session" }
   | { type: "end-session"; now?: number }
+  | { type: "delete-session"; id: string }
   | { type: "clear-archive" }
   | { type: "clear-shoe-archive" }
   | { type: "set-currency"; currency: string }
@@ -162,13 +163,29 @@ function syncProgressionOptions(session: SessionState): SessionState {
  * boundary would hand back the old session while leaving its archived copy in
  * place — and the next close would file it twice.
  */
+/** `id`, or `id#2`, `id#3`… if the archive already holds it. */
+function uniqueArchiveId(archive: readonly ArchivedSession[], id: string): string {
+  if (!archive.some((row) => row.id === id)) return id;
+  for (let suffix = 2; ; suffix += 1) {
+    const candidate = `${id}#${suffix}`;
+    if (!archive.some((row) => row.id === candidate)) return candidate;
+  }
+}
+
 function closeSession(
   state: AppState,
   options: { carryBankroll: boolean; now: number },
 ): AppState {
   const { rules, bankroll, progression, preferredBet, kellyMultiplier } = state.session;
   const archived = archiveSession(state.session, options.now);
-  const appended = archived ? [...state.archive, archived] : state.archive;
+  // `archiveSession` ids a row `${startedAt}-${endedAt}`, which two sittings
+  // closed in the same millisecond share. That was only a duplicate React
+  // key before; now that a row can be deleted BY id, a collision means
+  // deleting one visibly removes another, so the id is made unique here —
+  // where the existing archive is in hand and `archiveSession` cannot see it.
+  const appended = archived
+    ? [...state.archive, { ...archived, id: uniqueArchiveId(state.archive, archived.id) }]
+    : state.archive;
   const opening = options.carryBankroll ? bankroll.bankroll : bankroll.startingBankroll;
 
   // Trim to the cap, folding anything dropped into the running totals rather
@@ -346,6 +363,17 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case "reset-session":
       return closeSession(state, { carryBankroll: false, now: Date.now() });
+
+    case "delete-session": {
+      const archive = state.archive.filter((session) => session.id !== action.id);
+      // Nothing matched: return the same object so React skips the re-render.
+      if (archive.length === state.archive.length) return state;
+      // `evicted` is deliberately untouched. `lifetimeStats` sums the archive
+      // rows and ADDS the evicted totals, so dropping the row already takes
+      // its numbers out of the lifetime figures; subtracting from `evicted`
+      // as well would remove them twice.
+      return { ...state, archive };
+    }
 
     case "clear-archive":
       // Clearing history clears all of it, evicted totals included —

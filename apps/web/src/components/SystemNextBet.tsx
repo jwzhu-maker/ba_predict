@@ -93,6 +93,7 @@ export default function SystemNextBet() {
 
   return (
     <Card
+      className="card-system-says"
       title={`${run.name} says`}
       subtitle={finished ? "Last shoe" : `Hand ${next.hand} of this shoe, ties not counted`}
     >

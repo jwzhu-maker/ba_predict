@@ -237,8 +237,18 @@ export default function SettingsScreen() {
         subtitle="Ending a session files it under History"
       >
         <div className="button-row">
-          <button type="button" className="button" onClick={() => dispatch({ type: "new-shoe" })}>
-            New shoe
+          {/*
+            This one BANKS the session, unlike the "New shoe" on the Table
+            tab, which only swaps the cards and keeps the sitting running.
+            Filing it here is what puts the shoe you just played into
+            History with what it cost.
+          */}
+          <button
+            type="button"
+            className="button"
+            onClick={() => dispatch({ type: "end-session" })}
+          >
+            New shoe &amp; file it
           </button>
           <button
             type="button"
@@ -266,9 +276,15 @@ export default function SettingsScreen() {
           </button>
         </div>
         <p className="field-hint">
-          <strong>End session</strong> banks the night and carries your current balance into a
-          new one. <strong>Reset stake</strong> also files it, but puts the original starting
-          bankroll back — for when you were experimenting rather than playing.
+          <strong>New shoe &amp; file it</strong> and <strong>End session</strong> both close the
+          current session into History and open a fresh one carrying your balance &mdash; the two
+          labels differ only in what you mean by it. <strong>Reset stake</strong> also files it,
+          but puts the original starting bankroll back, for when you were experimenting rather
+          than playing.
+        </p>
+        <p className="field-hint">
+          The <strong>New shoe</strong> button on the Table tab is the lighter one: it swaps the
+          cards and leaves the sitting — and the money — running across shoes.
         </p>
         <p className="field-hint">
           Everything is stored on this device only. There is no account and no server — nothing

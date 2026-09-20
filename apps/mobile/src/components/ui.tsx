@@ -18,15 +18,18 @@ export function Card({
   title,
   subtitle,
   children,
+  style,
 }: {
   title?: string;
   subtitle?: string;
   children: ReactNode;
+  /** Extra style, for a card that needs its own sizing. */
+  style?: StyleProp<ViewStyle>;
 }) {
   const p = usePalette();
   const s = useStyles(p);
   return (
-    <View style={s.card}>
+    <View style={[s.card, style]}>
       {title ? (
         <View>
           <Text style={s.cardTitle}>{title}</Text>

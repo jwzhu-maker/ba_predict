@@ -99,21 +99,31 @@ export default function AdviceCard() {
         </Notice>
       ) : null}
 
-      <ul className="advice-reasons">
-        {advice.reasons.map((reason) => (
-          <li key={reason}>{reason}</li>
-        ))}
+      {/*
+        Folded away by default. These lines are the app's honesty and they
+        are worth keeping, but they are the SAME every hand — and left open
+        they were about 130px of the height this card has to reserve to stop
+        the Record buttons moving, on the screen where reaching those buttons
+        matters most.
+      */}
+      <details className="advice-why">
+        <summary>Why this</summary>
+        <ul className="advice-reasons">
+          {advice.reasons.map((reason) => (
+            <li key={reason}>{reason}</li>
+          ))}
         {/* Only while the engine's amount is the one on the table — a system
             or a hand-placed wager makes this sentence describe a stake that
             is not about to be placed. */}
-        {call.engineSizes && advice.sizingReason ? <li>{advice.sizingReason}</li> : null}
-        {call.source === "system" && call.systemName ? (
-          <li>
-            {call.systemName} is setting the side and the stake here, not the engine. It cannot
-            change what a bet costs &mdash; only how much and how often you bet.
-          </li>
-        ) : null}
-      </ul>
+          {call.engineSizes && advice.sizingReason ? <li>{advice.sizingReason}</li> : null}
+          {call.source === "system" && call.systemName ? (
+            <li>
+              {call.systemName} is setting the side and the stake here, not the engine. It
+              cannot change what a bet costs &mdash; only how much and how often you bet.
+            </li>
+          ) : null}
+        </ul>
+      </details>
 
       {/*
         The engine's warnings are all computed from the ENGINE's stake

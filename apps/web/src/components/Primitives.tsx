@@ -5,14 +5,21 @@ export function Card({
   subtitle,
   children,
   tone,
+  className,
 }: {
   title?: string;
   subtitle?: string;
   children: ReactNode;
   tone?: "default" | "warn" | "good";
+  /** Extra class, for a card that needs its own sizing or placement. */
+  className?: string;
 }) {
   return (
-    <section className={`card${tone && tone !== "default" ? ` card-${tone}` : ""}`}>
+    <section
+      className={`card${tone && tone !== "default" ? ` card-${tone}` : ""}${
+        className ? ` ${className}` : ""
+      }`}
+    >
       {title ? (
         <header className="card-header">
           <h2>{title}</h2>

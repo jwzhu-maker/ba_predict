@@ -43,6 +43,7 @@ export default function TableScreen() {
   const [bankerPair, setBankerPair] = useState(false);
   const [cardCount, setCardCount] = useState<4 | 5 | 6 | null>(null);
   const [bankerWinOnSix, setBankerWinOnSix] = useState(false);
+  const [showWhy, setShowWhy] = useState(false);
   // Null means "follow the Bet card"; touching a control pins a value, and
   // taking the wager back (or the app's call moving on) releases it again.
   const [betOverride, setBetOverride] = useState<BetType | null>(null);
@@ -108,7 +109,13 @@ export default function TableScreen() {
         </Hint>
       </View>
 
-      <View style={local.advice}>
+      {/*
+        Reserved so the Record buttons below do not move between coups: the
+        card gains an amount, a cost line, a detail line and the skip button
+        on a live call and drops all four on a warm-up. See the matching
+        note in the web stylesheet for how the number was derived.
+      */}
+      <View style={[local.advice, { minHeight: 385 }]}>
         <Text style={local.kicker}>
           {advice.action === "stop"
             ? "STOP"
@@ -167,18 +174,25 @@ export default function TableScreen() {
         ) : null}
 
 
-        {call.engineSizes && advice.sizingReason ? (
+        {/* Folded: these lines are the same every hand, and open they were
+            most of the height this card has to reserve. */}
+        <Pressable onPress={() => setShowWhy((v) => !v)} accessibilityRole="button">
+          <Text style={{ color: p.muted, fontSize: 12, fontWeight: "600", paddingVertical: 4 }}>
+            {showWhy ? "Hide why" : "Why this"}
+          </Text>
+        </Pressable>
+        {showWhy && call.engineSizes && advice.sizingReason ? (
           <Hint>• {advice.sizingReason}</Hint>
         ) : null}
-        {call.source === "system" && call.systemName ? (
+        {showWhy && call.source === "system" && call.systemName ? (
           <Hint>
             • {call.systemName} is setting the side and the stake here, not the engine. It cannot
             change what a bet costs — only how much and how often you bet.
           </Hint>
         ) : null}
-        {advice.reasons.map((reason) => (
-          <Hint key={reason}>• {reason}</Hint>
-        ))}
+        {showWhy
+          ? advice.reasons.map((reason) => <Hint key={reason}>• {reason}</Hint>)
+          : null}
         {/* The engine's warnings are computed from the ENGINE's stake, so
             against a system's amount they describe money nobody is putting
             down — the same trap `sizingReason` was pulled out of `reasons`

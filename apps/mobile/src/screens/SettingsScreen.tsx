@@ -188,7 +188,9 @@ export default function SettingsScreen() {
 
       <Card title="Start over" subtitle="Ending a session files it under History">
         <Row>
-          <Btn label="New shoe" onPress={() => dispatch({ type: "new-shoe" })} />
+          {/* This one BANKS the session, unlike the "New shoe" on the Table
+              tab, which only swaps the cards and keeps the sitting running. */}
+          <Btn label="New shoe & file it" onPress={() => dispatch({ type: "end-session" })} />
           <Btn
             label="End session"
             variant="primary"
