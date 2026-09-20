@@ -195,12 +195,69 @@ describe("Reverse 12", () => {
     expect(result.groups.at(-1)!.firstHand).toBe(37);
   });
 
-  it("clips a stake to the table maximum when one is set", () => {
+  it("clips a stake to the table maximum when one is set, and says how often", () => {
     const result = run(`${WARMUP}BBBBBB`, { tableMax: 250 });
     expect(result.hands.map((h) => h.stake).filter((s) => s > 0)).toEqual([
       100, 200, 250, 250, 250, 250,
     ]);
     expect(result.peakStake).toBe(250);
+    // Four asks (300, 400, 500, 600) were held at 250. Silently clipping
+    // reports a net for a ladder that was never climbed.
+    expect(result.clippedBets).toBe(4);
+    expect(run(`${WARMUP}BBBBBB`).clippedBets).toBe(0);
+  });
+
+  it("clips the NEXT stake to the table maximum too", () => {
+    // The card renders next.stake as the instruction, so an unclipped value
+    // there tells the user to bet above the table maximum while the run
+    // books the capped amount.
+    const result = run(`${WARMUP}BBB`, { tableMax: 250 });
+    expect(result.hands.map((h) => h.stake).filter((s) => s > 0)).toEqual([100, 200, 250]);
+    expect(result.next).toMatchObject({
+      step: 4,
+      stake: 250,
+      requestedStake: 400,
+      clipped: true,
+    });
+    // With no ceiling the two agree and nothing is flagged.
+    expect(run(`${WARMUP}BBB`).next).toMatchObject({
+      stake: 400,
+      requestedStake: 400,
+      clipped: false,
+    });
+  });
+
+  it("flags a next stake the bankroll cannot cover, without shrinking it", () => {
+    const poor = run(`${WARMUP}BBB`, { bankroll: 250 });
+    // The rule's ask stands: quietly reducing it would report a different
+    // system. The client warns instead.
+    expect(poor.next.stake).toBe(400);
+    expect(poor.next.unaffordable).toBe(true);
+    expect(run(`${WARMUP}BBB`, { bankroll: 1000 }).next.unaffordable).toBe(false);
+    expect(run(`${WARMUP}BBB`).next.unaffordable).toBe(false);
+  });
+
+  it("never lets a group claim hands the shoe did not deal", () => {
+    // 40 tie-free hands: the last group covers 37-42 by the rule, but only
+    // 37-40 exist. The card prints this range verbatim.
+    const result = run("PB".repeat(20));
+    const last = result.groups.at(-1)!;
+    expect(last.firstHand).toBe(37);
+    expect(last.lastHand).toBe(40);
+    for (const group of result.groups) {
+      expect(group.lastHand).toBeLessThanOrEqual(result.handsAvailable);
+      expect(group.lastHand).toBeGreaterThanOrEqual(group.firstHand);
+    }
+  });
+
+  it("ignores a config key explicitly set to undefined", () => {
+    // `exactOptionalPropertyTypes` is off, so this typechecks — and a bare
+    // spread would put `undefined` in `lastHand`, making `hand > undefined`
+    // false for every hand and silently disabling the stop-at-60 rule.
+    const result = run("PB".repeat(35), { config: { lastHand: undefined } });
+    expect(result.config.lastHand).toBe(60);
+    expect(result.hands.filter((hand) => hand.bet !== null).every((h) => h.hand <= 60)).toBe(true);
+    expect(run("PB".repeat(35), { config: { baseStake: undefined } }).config.baseStake).toBe(100);
   });
 
   it("totals agree with the hand log", () => {

@@ -1,3 +1,4 @@
+import { readSystemNext } from "@ba-predict/app-core";
 import { Card, Notice } from "./Primitives";
 import { useMoney, useSystemRun } from "../state/store";
 
@@ -20,12 +21,13 @@ export default function SystemNextBet() {
   const { run, finished } = useSystemRun();
   const money = useMoney();
   const next = run.next;
+  const reading = readSystemNext(run);
 
   // Nothing has been recorded and the shoe is not over: the card would be a
   // countdown from 12 with no information in it.
   if (run.handsAvailable === 0 && !finished) return null;
 
-  const waiting = run.config.lookback + 1 - next.hand;
+  const waiting = reading.handsToWatch;
 
   const body = (() => {
     if (finished) {
@@ -53,20 +55,29 @@ export default function SystemNextBet() {
       );
     }
     if (next.skipped === "group-over") {
-      const resumesAt = (next.group ?? 0) * run.config.groupSize + run.config.lookback + 1;
+      if (reading.resumesAtHand === null) {
+        return (
+          <p className="prose">
+            Sitting out, and that was the last group — group {next.group} lost, and hand{" "}
+            {run.config.lastHand} is where the rule stops. Nothing more this shoe.
+          </p>
+        );
+      }
       return (
         <p className="prose">
-          Sitting out. Group {next.group} lost, so the rule waits for group {(next.group ?? 0) + 1}
-          , which opens on hand {resumesAt} at {money.format(run.config.baseStake)}.
+          Sitting out. Group {next.group} lost, so the rule waits for group{" "}
+          {reading.resumesAtGroup}, which opens on hand {reading.resumesAtHand} at{" "}
+          {money.format(run.config.baseStake)}.
         </p>
       );
     }
+    // A live hand always has a side; rendering nothing beats inventing one on
+    // an instruction the user puts money behind.
+    if (next.bet === null) return null;
     return (
       <>
         <div className="system-call">
-          <span className={`system-side system-side-${next.bet}`}>
-            {SIDE_LABEL[next.bet ?? "banker"]}
-          </span>
+          <span className={`system-side system-side-${next.bet}`}>{SIDE_LABEL[next.bet]}</span>
           <span className="system-stake">{money.format(next.stake)}</span>
         </div>
         <p className="field-hint">
@@ -74,6 +85,18 @@ export default function SystemNextBet() {
           mirroring hand {next.referenceHand}
           {next.step === 1 ? " · fresh group, back to the base stake" : null}
         </p>
+        {next.clipped ? (
+          <Notice tone="warn">
+            Your ladder asks for {money.format(next.requestedStake)} here, but the table maximum
+            is {money.format(next.stake)}. The amount above is what you can actually put on.
+          </Notice>
+        ) : null}
+        {next.unaffordable ? (
+          <Notice tone="danger">
+            That is more than your bankroll has left. The rule does not know about your balance
+            — this is the point at which it stops being playable as written.
+          </Notice>
+        ) : null}
       </>
     );
   })();

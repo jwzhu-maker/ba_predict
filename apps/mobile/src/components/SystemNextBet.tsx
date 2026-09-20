@@ -1,4 +1,5 @@
 import { Text, View } from "react-native";
+import { readSystemNext } from "@ba-predict/app-core";
 import { useMoney, useSystemRun } from "../state/store";
 import { usePalette } from "../theme";
 import { Card, Hint, Notice, Prose } from "./ui";
@@ -22,10 +23,11 @@ export default function SystemNextBet() {
   const money = useMoney();
   const p = usePalette();
   const next = run.next;
+  const reading = readSystemNext(run);
 
   if (run.handsAvailable === 0 && !finished) return null;
 
-  const waiting = run.config.lookback + 1 - next.hand;
+  const waiting = reading.handsToWatch;
 
   const body = () => {
     if (finished) {
@@ -53,15 +55,25 @@ export default function SystemNextBet() {
       );
     }
     if (next.skipped === "group-over") {
-      const resumesAt = (next.group ?? 0) * run.config.groupSize + run.config.lookback + 1;
+      if (reading.resumesAtHand === null) {
+        return (
+          <Prose>
+            Sitting out, and that was the last group — group {next.group} lost, and hand{" "}
+            {run.config.lastHand} is where the rule stops. Nothing more this shoe.
+          </Prose>
+        );
+      }
       return (
         <Prose>
           Sitting out. Group {next.group} lost, so the rule waits for group{" "}
-          {(next.group ?? 0) + 1}, which opens on hand {resumesAt} at{" "}
+          {reading.resumesAtGroup}, which opens on hand {reading.resumesAtHand} at{" "}
           {money.format(run.config.baseStake)}.
         </Prose>
       );
     }
+    // A live hand always has a side; rendering nothing beats inventing one on
+    // an instruction the user puts money behind.
+    if (next.bet === null) return null;
     return (
       <View style={{ gap: 4 }}>
         <View style={{ flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", gap: 12 }}>
@@ -72,7 +84,7 @@ export default function SystemNextBet() {
               color: next.bet === "player" ? p.player : p.banker,
             }}
           >
-            {SIDE_LABEL[next.bet ?? "banker"]}
+            {SIDE_LABEL[next.bet]}
           </Text>
           <Text style={{ fontSize: 25, fontWeight: "700", color: p.accent }}>
             {money.format(next.stake)}
@@ -83,6 +95,18 @@ export default function SystemNextBet() {
           mirroring hand {next.referenceHand}
           {next.step === 1 ? " · fresh group, back to the base stake" : ""}
         </Hint>
+        {next.clipped ? (
+          <Notice tone="warn">
+            Your ladder asks for {money.format(next.requestedStake)} here, but the table maximum
+            is {money.format(next.stake)}. The amount above is what you can actually put on.
+          </Notice>
+        ) : null}
+        {next.unaffordable ? (
+          <Notice tone="warn">
+            That is more than your bankroll has left. The rule does not know about your balance
+            — this is the point at which it stops being playable as written.
+          </Notice>
+        ) : null}
       </View>
     );
   };

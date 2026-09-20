@@ -221,6 +221,9 @@ export function useSystemRun(): { run: SystemRun; finished: boolean } {
         coups,
         rules: session.rules,
         tableMax: session.bankroll.tableMax > 0 ? session.bankroll.tableMax : null,
+        // Only the NEXT bet is judged against the balance; the replay behind
+        // it is hindsight and must not be re-cut to today's money.
+        bankroll: session.bankroll.bankroll,
       }),
     };
   }, [
@@ -229,6 +232,7 @@ export function useSystemRun(): { run: SystemRun; finished: boolean } {
     session.previousShoeStartIndex,
     session.rules,
     session.bankroll.tableMax,
+    session.bankroll.bankroll,
   ]);
 }
 

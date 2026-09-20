@@ -1,4 +1,5 @@
 import { Text, View } from "react-native";
+import { bettableHands, oddsOfReachingTopStep } from "@ba-predict/app-core";
 import { formatPercent } from "../lib/format";
 import { useMoney, useSystemRun } from "../state/store";
 import { usePalette } from "../theme";
@@ -20,8 +21,7 @@ export default function SystemRun() {
   const p = usePalette();
   const s = useStyles(p);
 
-  const possible =
-    run.config.lastHand === null ? null : Math.max(0, run.config.lastHand - run.config.lookback);
+  const possible = bettableHands(run);
 
   if (run.handsAvailable === 0) {
     return (
@@ -67,7 +67,7 @@ export default function SystemRun() {
       <Row>
         <Stat
           label="Bets placed"
-          value={possible === null ? String(run.bets) : `${run.bets} of ${possible}`}
+          value={`${run.bets} of ${possible}`}
           hint="A group stops at its first loss"
         />
         <Stat label="Won" value={`${run.wins} (${formatPercent(run.wins / run.bets, 0)})`} />
@@ -83,14 +83,18 @@ export default function SystemRun() {
 
       <View style={{ gap: 6, marginTop: 8 }}>
         <View style={{ flexDirection: "row" }}>
-          <Text style={[s.fieldLabel, { flex: 1 }]}>GROUP</Text>
+          {/* Currency strings do not fit a fixed column: MYR renders
+              "−RM 2,100.00", which wraps rather than ellipsizes in RN and
+              breaks the row. The money columns flex and the narrow count
+              stays fixed. */}
+          <Text style={[s.fieldLabel, { flex: 1.1 }]}>GROUP</Text>
           <Text style={[s.fieldLabel, { width: 42, textAlign: "right" }]}>BETS</Text>
-          <Text style={[s.fieldLabel, { width: 66, textAlign: "right" }]}>STAKED</Text>
-          <Text style={[s.fieldLabel, { width: 66, textAlign: "right" }]}>NET</Text>
+          <Text style={[s.fieldLabel, { flex: 1, textAlign: "right" }]}>STAKED</Text>
+          <Text style={[s.fieldLabel, { flex: 1, textAlign: "right" }]}>NET</Text>
         </View>
         {run.groups.map((group) => (
           <View key={group.group} style={{ flexDirection: "row", paddingVertical: 3 }}>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1.1 }}>
               <Text style={{ color: p.text, fontSize: 13, fontWeight: "600" }}>{group.group}</Text>
               <Text style={{ color: p.muted, fontSize: 10 }}>
                 {group.perfect
@@ -103,12 +107,12 @@ export default function SystemRun() {
             <Text style={{ width: 42, textAlign: "right", fontSize: 13, color: p.text }}>
               {group.wins}/{group.bets}
             </Text>
-            <Text style={{ width: 66, textAlign: "right", fontSize: 13, color: p.text }}>
+            <Text style={{ flex: 1, textAlign: "right", fontSize: 13, color: p.text }}>
               {money.format(group.staked)}
             </Text>
             <Text
               style={{
-                width: 66,
+                flex: 1,
                 textAlign: "right",
                 fontSize: 13,
                 color: group.net >= 0 ? p.accent : p.danger,
@@ -127,6 +131,14 @@ export default function SystemRun() {
         </Notice>
       ) : null}
 
+      {run.clippedBets > 0 ? (
+        <Notice tone="warn">
+          The table maximum held {run.clippedBets} bet{run.clippedBets === 1 ? "" : "s"} below what
+          the ladder asked for, so this is what the rule managed at your table rather than the
+          rule as written.
+        </Notice>
+      ) : null}
+
       {run.approximate ? (
         <Notice tone="warn">
           Your table pays a reduced rate on a Banker win with 6, which recorded coups do not
@@ -138,7 +150,7 @@ export default function SystemRun() {
         One shoe of hindsight, on the hands that actually came out. What repeats is the shape, not
         the total: a group stops at its first loss, so it lands about two bets on average rather
         than {run.config.groupSize}, and the top of the ladder is reached roughly once in{" "}
-        {2 ** run.config.groupSize} groups.
+        {oddsOfReachingTopStep(run.config.groupSize)} groups.
       </Hint>
     </Card>
   );

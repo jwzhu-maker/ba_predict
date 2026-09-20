@@ -1,3 +1,4 @@
+import { bettableHands, oddsOfReachingTopStep } from "@ba-predict/app-core";
 import { Card, Notice, Stat } from "./Primitives";
 import { formatPercent } from "../lib/format";
 import { useMoney, useSystemRun } from "../state/store";
@@ -19,10 +20,7 @@ export default function SystemRun() {
   const { run, finished } = useSystemRun();
   const money = useMoney();
 
-  const possible =
-    run.config.lastHand === null
-      ? null
-      : Math.max(0, run.config.lastHand - run.config.lookback);
+  const possible = bettableHands(run);
 
   if (run.handsAvailable === 0) {
     return (
@@ -68,7 +66,7 @@ export default function SystemRun() {
       <div className="stat-grid">
         <Stat
           label="Bets placed"
-          value={possible === null ? String(run.bets) : `${run.bets} of ${possible}`}
+          value={`${run.bets} of ${possible}`}
           hint="A group stops at its first loss"
         />
         <Stat label="Won" value={`${run.wins} (${formatPercent(run.wins / run.bets, 0)})`} />
@@ -124,6 +122,14 @@ export default function SystemRun() {
         </Notice>
       ) : null}
 
+      {run.clippedBets > 0 ? (
+        <Notice tone="warn">
+          The table maximum held {run.clippedBets} bet{run.clippedBets === 1 ? "" : "s"} below what
+          the ladder asked for, so this is what the rule managed at your table rather than the
+          rule as written.
+        </Notice>
+      ) : null}
+
       {run.approximate ? (
         <Notice tone="warn">
           Your table pays a reduced rate on a Banker win with 6, which recorded coups do not
@@ -135,7 +141,7 @@ export default function SystemRun() {
         One shoe of hindsight, on the hands that actually came out. What repeats is the shape,
         not the total: a group stops at its first loss, so it lands about two bets on average
         rather than {run.config.groupSize}, and the top of the ladder is reached roughly once in{" "}
-        {2 ** run.config.groupSize} groups.
+        {oddsOfReachingTopStep(run.config.groupSize)} groups.
       </p>
     </Card>
   );

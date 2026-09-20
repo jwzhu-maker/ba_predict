@@ -1,4 +1,4 @@
-import type { BetType, CoupRecord, TableRules } from "./types";
+import type { CoupRecord, TableRules } from "./types";
 import { settleWager } from "./session";
 
 /**
@@ -135,7 +135,20 @@ export interface SystemNext {
   skipped: SystemSkipReason | null;
   /** The hand whose outcome decides the side, or null when sitting out. */
   referenceHand: number | null;
+  /** What to actually put on the table: the ladder's ask, clipped to the table maximum. */
   stake: number;
+  /** What the ladder asked for before the table maximum was applied. */
+  requestedStake: number;
+  /** True when the table maximum is holding the stake below the ladder's ask. */
+  clipped: boolean;
+  /**
+   * True when `stake` is more than the bankroll has left.
+   *
+   * The stake is NOT reduced to fit: the rule says what it says, and a card
+   * that quietly shrank it would be reporting a different system. The client
+   * warns instead, which is what every other staking surface here does.
+   */
+  unaffordable: boolean;
 }
 
 export interface SystemRun {
@@ -159,6 +172,16 @@ export interface SystemRun {
   peakStake: number;
   /** Deepest peak-to-trough fall in the running balance. */
   maxDrawdown: number;
+  /**
+   * Hands whose stake the table maximum held below the ladder's ask.
+   *
+   * Without this the card reports a net and a "biggest bet" for a ladder the
+   * player never actually climbed, while `replayStrategies` on the very same
+   * screen calls the identical event a breakdown. This system does not stop
+   * at the ceiling the way a Martingale must — its ask is bounded, so it
+   * keeps playing at the cap — but it must still say so.
+   */
+  clippedBets: number;
   /** What the system says to do on the next hand. */
   next: SystemNext;
   /** Net over everything staked, signed. Positive is ahead. */
@@ -178,8 +201,6 @@ export interface SystemRun {
    */
   approximate: boolean;
 }
-
-const SIDE_BET: Record<SystemSide, BetType> = { player: "player", banker: "banker" };
 
 /** The opposite side. The whole of the "reverse" rule. */
 function opposite(side: SystemSide): SystemSide {
@@ -219,6 +240,36 @@ export interface RunBettingSystemOptions {
   config?: Partial<BettingSystemConfig>;
   /** Table ceiling in currency. A stake above it is clipped. Null = no ceiling. */
   tableMax?: number | null;
+  /**
+   * Money available for the NEXT bet, used only to flag an unaffordable one.
+   *
+   * Deliberately not applied to the replay: that is hindsight over a shoe
+   * that already happened, and stopping it at today's balance would report a
+   * system the player did not play. `replayStrategies` takes a bankroll
+   * because a Martingale's ask grows without bound and running out is how it
+   * fails; this ladder tops out at a known step.
+   */
+  bankroll?: number | null;
+}
+
+/**
+ * Merge overrides onto the defaults, ignoring keys explicitly set undefined.
+ *
+ * A bare spread lets `{ lastHand: undefined }` through — `exactOptionalPropertyTypes`
+ * is off, so it typechecks — and `hand > undefined` is false for every hand,
+ * which silently disables the stop-at-60 rule and has the cards render
+ * "after hand undefined".
+ */
+function resolveConfig(
+  defaults: BettingSystemConfig,
+  overrides: Partial<BettingSystemConfig> | undefined,
+): BettingSystemConfig {
+  const merged = { ...defaults };
+  if (!overrides) return merged;
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value !== undefined) (merged as Record<string, unknown>)[key] = value;
+  }
+  return merged;
 }
 
 /**
@@ -232,8 +283,8 @@ export interface RunBettingSystemOptions {
  */
 export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
   const definition = BETTING_SYSTEMS[0]!;
-  const config: BettingSystemConfig = { ...definition.defaults, ...options.config };
-  const { rules, tableMax = null } = options;
+  const config = resolveConfig(definition.defaults, options.config);
+  const { rules, tableMax = null, bankroll = null } = options;
   const { hands: sequence, tiesRemoved } = tieFreeHands(options.coups);
 
   const hands: SystemHand[] = [];
@@ -247,6 +298,7 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
   let wins = 0;
   let losses = 0;
   let peakStake = 0;
+  let clippedBets = 0;
   let approximate = false;
 
   // Live group state. `groupDead` is the "stop until the next group" rule.
@@ -275,12 +327,15 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
         groupWins = 0;
         groupDead = false;
         const covers = hand + config.groupSize - 1;
+        // Clamped twice, so a group the run ends inside never claims hands it
+        // was not allowed to play (config.lastHand) OR hands the shoe never
+        // dealt (sequence.length). Without the second the card reads
+        // "hands 37-42" on a shoe that stopped at 40.
+        const allowed = config.lastHand === null ? covers : Math.min(covers, config.lastHand);
         current = {
           group,
           firstHand: hand,
-          // Clamped, so a group the run ends inside does not claim hands it
-          // was never allowed to play.
-          lastHand: config.lastHand === null ? covers : Math.min(covers, config.lastHand),
+          lastHand: Math.min(allowed, sequence.length),
           bets: 0,
           wins: 0,
           staked: 0,
@@ -324,9 +379,10 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
 
     const wanted = config.baseStake + groupWins * config.stakeStep;
     const stake = tableMax === null ? wanted : Math.min(wanted, tableMax);
+    if (stake < wanted - 1e-9) clippedBets += 1;
 
     const settlement = settleWager(
-      { bet: SIDE_BET[side], amount: stake },
+      { bet: side, amount: stake },
       {
         outcome: entry.outcome,
         playerPair: entry.coup.playerPair,
@@ -351,16 +407,17 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
     if (balance > peak) peak = balance;
     if (peak - balance > maxDrawdown) maxDrawdown = peak - balance;
 
-    if (current) {
-      current.bets += 1;
-      current.staked += stake;
-      current.net += settlement.profit;
-      if (won) {
-        current.wins += 1;
-        if (current.bets === config.groupSize) current.perfect = true;
-      } else {
-        current.lostAt = hand;
-      }
+    // `current` is always set here: a bet needs `skipped === null`, which
+    // needs a group, and a group's first hand assigns it.
+    const group_ = current!;
+    group_.bets += 1;
+    group_.staked += stake;
+    group_.net += settlement.profit;
+    if (won) {
+      group_.wins += 1;
+      if (group_.bets === config.groupSize) group_.perfect = true;
+    } else {
+      group_.lostAt = hand;
     }
 
     if (won) groupWins += 1;
@@ -384,7 +441,7 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
 
   const target = config.lastHand;
   return {
-    next: describeNext(sequence, config, groupWins, groupDead),
+    next: describeNext(sequence, config, groupWins, groupDead, tableMax, bankroll),
     id: definition.id,
     name: definition.name,
     config,
@@ -399,6 +456,7 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
     net: balance,
     peakStake,
     maxDrawdown,
+    clippedBets,
     perUnit: staked === 0 ? 0 : balance / staked,
     perfectGroups: groups.filter((group) => group.perfect).length,
     incomplete: target !== null && sequence.length < target,
@@ -418,6 +476,8 @@ function describeNext(
   config: BettingSystemConfig,
   groupWins: number,
   groupDead: boolean,
+  tableMax: number | null,
+  bankroll: number | null,
 ): SystemNext {
   const hand = sequence.length + 1;
   const firstBettingHand = config.lookback + 1;
@@ -429,6 +489,9 @@ function describeNext(
     skipped,
     referenceHand: null,
     stake: 0,
+    requestedStake: 0,
+    clipped: false,
+    unaffordable: false,
   });
 
   if (config.lastHand !== null && hand > config.lastHand) return idle("past-last-hand", null, null);
@@ -449,6 +512,12 @@ function describeNext(
   // warm-up check above guarantees hand > lookback.
   if (!reference) return idle("warm-up", null, null);
 
+  // The same clip the run applies. Without it the card names the ladder's
+  // ask while the run books the capped amount, so the Table tab instructs a
+  // stake above the table maximum.
+  const requestedStake = config.baseStake + banked * config.stakeStep;
+  const stake = tableMax === null ? Math.max(0, requestedStake) : Math.min(requestedStake, tableMax);
+
   return {
     hand,
     group,
@@ -456,6 +525,9 @@ function describeNext(
     bet: opposite(reference.outcome),
     skipped: null,
     referenceHand,
-    stake: config.baseStake + banked * config.stakeStep,
+    stake,
+    requestedStake,
+    clipped: stake < requestedStake - 1e-9,
+    unaffordable: bankroll !== null && stake > bankroll + 1e-9,
   };
 }
