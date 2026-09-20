@@ -8,6 +8,7 @@ import {
 import { useState } from "react";
 import { View } from "react-native";
 import ShoeReplay from "../components/ShoeReplay";
+import StrategyRecord from "../components/StrategyRecord";
 import { Btn, Card, Hint, NumberInput, Picker, Row, Stat, SwitchRow } from "../components/ui";
 import { formatPercent, formatUnits } from "../lib/format";
 import { useAdvice, useAppState } from "../state/store";
@@ -67,6 +68,8 @@ export default function SimulatorScreen() {
 
   return (
     <View style={{ gap: 12 }}>
+      <StrategyRecord />
+
       <ShoeReplay />
 
       <Card

@@ -65,16 +65,16 @@ export default function ShoeRoads() {
           <BeadPlate roads={roads} />
         </View>
         <View style={{ gap: 4 }}>
-          <Hint>BIG EYE BOY</Hint>
-          <DerivedRoad marks={roads.bigEyeBoy} />
+          <Hint>BIG EYE BOY · HOLLOW</Hint>
+          <DerivedRoad marks={roads.bigEyeBoy} shape="ring" />
         </View>
         <View style={{ gap: 4 }}>
-          <Hint>SMALL ROAD</Hint>
-          <DerivedRoad marks={roads.smallRoad} />
+          <Hint>SMALL ROAD · SOLID</Hint>
+          <DerivedRoad marks={roads.smallRoad} shape="solid" />
         </View>
         <View style={{ gap: 4 }}>
-          <Hint>COCKROACH PIG</Hint>
-          <DerivedRoad marks={roads.cockroachPig} />
+          <Hint>COCKROACH PIG · SLASH</Hint>
+          <DerivedRoad marks={roads.cockroachPig} shape="slash" />
         </View>
 
         <Hint>

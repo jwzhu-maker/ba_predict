@@ -66,18 +66,18 @@ export default function ShoeRoads() {
         </div>
 
         <div className="road-block">
-          <span className="road-label">Big eye boy</span>
-          <DerivedRoad marks={roads.bigEyeBoy} label="Big eye boy" />
+          <span className="road-label">Big eye boy · hollow</span>
+          <DerivedRoad marks={roads.bigEyeBoy} label="Big eye boy" shape="ring" />
         </div>
 
         <div className="road-block">
-          <span className="road-label">Small road</span>
-          <DerivedRoad marks={roads.smallRoad} label="Small road" />
+          <span className="road-label">Small road · solid</span>
+          <DerivedRoad marks={roads.smallRoad} label="Small road" shape="solid" />
         </div>
 
         <div className="road-block">
-          <span className="road-label">Cockroach pig</span>
-          <DerivedRoad marks={roads.cockroachPig} label="Cockroach pig" />
+          <span className="road-label">Cockroach pig · slash</span>
+          <DerivedRoad marks={roads.cockroachPig} label="Cockroach pig" shape="slash" />
         </div>
 
         <p className="field-hint">

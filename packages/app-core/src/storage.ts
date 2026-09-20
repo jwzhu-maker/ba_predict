@@ -1,4 +1,5 @@
 import { isArchivedSession, parseEvictedTotals } from "./archive";
+import { isArchivedShoe } from "./shoe-archive";
 import { createInitialState, type AppState } from "./reducer";
 
 /**
@@ -40,6 +41,9 @@ export function deserializeState(raw: string | null | undefined): AppState {
       // than taking the whole restore down with it.
       archive: Array.isArray(parsed.archive) ? parsed.archive.filter(isArchivedSession) : [],
       evicted: parseEvictedTotals(parsed.evicted),
+      shoeArchive: Array.isArray(parsed.shoeArchive)
+        ? parsed.shoeArchive.filter(isArchivedShoe)
+        : [],
       currency: typeof parsed.currency === "string" ? parsed.currency : initial.currency,
       // Undo history is deliberately not restored: it is a stack of whole
       // sessions, and "undo across a relaunch" is not a promise worth making.

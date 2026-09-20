@@ -8,6 +8,7 @@ import {
 import { useState } from "react";
 import { Card, NumberField, Stat } from "../components/Primitives";
 import ShoeReplay from "../components/ShoeReplay";
+import StrategyRecord from "../components/StrategyRecord";
 import { formatPercent, formatUnits } from "../lib/format";
 import { useAdvice, useAppState } from "../state/store";
 
@@ -67,6 +68,8 @@ export default function SimulatorScreen() {
 
   return (
     <div className="screen">
+      <StrategyRecord />
+
       <ShoeReplay />
 
       <Card

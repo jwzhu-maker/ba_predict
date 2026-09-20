@@ -1,10 +1,12 @@
 import {
   createMoneyFormatter,
+  aggregateStrategyRecord,
   isReplayableBet,
   lifetimeStats,
   replayStrategies,
   type LifetimeStats,
   type MoneyFormatter,
+  type StrategyRecord,
   type StrategyReplay,
 } from "@ba-predict/app-core";
 import {
@@ -138,6 +140,33 @@ export function useShoeReplay(): { replay: StrategyReplay; finished: boolean } |
     session.coups,
     session.shoeStartIndex,
     session.previousShoeStartIndex,
+    session.rules,
+    session.preferredBet,
+    session.progressionOptions,
+    session.bankroll,
+  ]);
+}
+
+/** Every staking plan's record across every shoe recorded on this device. */
+export function useStrategyRecord(): StrategyRecord {
+  const { session, shoeArchive } = useAppState();
+  return useMemo(() => {
+    const bet = isReplayableBet(session.preferredBet as never)
+      ? (session.preferredBet as Exclude<typeof session.preferredBet, "auto">)
+      : "banker";
+    const unit = session.bankroll.unitSize || 1;
+    return aggregateStrategyRecord({
+      shoes: shoeArchive,
+      currentShoe: session.coups.slice(session.shoeStartIndex),
+      rules: session.rules,
+      bet,
+      progressionOptions: session.progressionOptions,
+      bankrollUnits: Math.max(1, Math.round(session.bankroll.bankroll / unit)),
+    });
+  }, [
+    shoeArchive,
+    session.coups,
+    session.shoeStartIndex,
     session.rules,
     session.preferredBet,
     session.progressionOptions,

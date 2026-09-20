@@ -49,6 +49,21 @@ function useRoadStyles(p: Palette) {
           margin: 3,
           borderWidth: 2.5,
         },
+        // Cockroach pig is a slash, not a circle: the bar is drawn across an
+        // otherwise empty cell.
+        slashCell: {
+          width: ROAD_CELL - 6,
+          height: ROAD_CELL - 6,
+          margin: 3,
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        slashBar: {
+          width: 2.5,
+          height: (ROAD_CELL - 6) * 1.18,
+          borderRadius: 2,
+          transform: [{ rotate: "45deg" }],
+        },
       }),
     [p],
   );
@@ -131,7 +146,50 @@ export function BigRoad({ roads }: { roads: RoadSet }) {
   return <Board rows={grid} />;
 }
 
-export function DerivedRoad({ marks }: { marks: readonly DerivedMark[] }) {
+/**
+ * Each derived road has its own mark, and they are not interchangeable.
+ *
+ * A casino board draws big eye boy as a hollow circle, small road as a solid
+ * one, and cockroach pig as a slash. Drawing all three as rings made the app
+ * disagree with the board a player reads it against.
+ */
+export type DerivedShape = "ring" | "solid" | "slash";
+
+export function derivedMarkNode(
+  mark: DerivedMark,
+  shape: DerivedShape,
+  styles: ReturnType<typeof useRoadStyles>,
+  palette: Palette,
+  key: string,
+) {
+  const colour = mark === "red" ? palette.banker : palette.player;
+  if (shape === "slash") {
+    return (
+      <View key={key} style={styles.slashCell}>
+        <View style={[styles.slashBar, { backgroundColor: colour }]} />
+      </View>
+    );
+  }
+  return (
+    <View
+      key={key}
+      style={[
+        styles.small,
+        shape === "solid"
+          ? { borderColor: "transparent", backgroundColor: colour }
+          : { borderColor: colour },
+      ]}
+    />
+  );
+}
+
+export function DerivedRoad({
+  marks,
+  shape,
+}: {
+  marks: readonly DerivedMark[];
+  shape: DerivedShape;
+}) {
   const p = usePalette();
   const s = useRoadStyles(p);
   const layout = useMemo(() => layoutDerivedRoad(marks, ROWS), [marks]);
@@ -141,11 +199,12 @@ export function DerivedRoad({ marks }: { marks: readonly DerivedMark[] }) {
   for (const entry of layout) {
     const rowCells = grid[entry.row];
     if (!rowCells) continue;
-    rowCells[entry.column] = (
-      <View
-        key={`${entry.row}-${entry.column}`}
-        style={[s.small, { borderColor: entry.mark === "red" ? p.banker : p.player }]}
-      />
+    rowCells[entry.column] = derivedMarkNode(
+      entry.mark,
+      shape,
+      s,
+      p,
+      `${entry.row}-${entry.column}`,
     );
   }
 
@@ -167,15 +226,15 @@ export function AskTheRoad({ roads }: { roads: RoadSet }) {
   const s = useRoadStyles(p);
   const ask = useMemo(() => askRoads(roads), [roads]);
 
-  const rows = [
-    { label: "Big eye boy", player: ask.player.bigEyeBoy[0], banker: ask.banker.bigEyeBoy[0] },
-    { label: "Small road", player: ask.player.smallRoad[0], banker: ask.banker.smallRoad[0] },
-    { label: "Cockroach pig", player: ask.player.cockroachPig[0], banker: ask.banker.cockroachPig[0] },
+  const rows: { label: string; shape: DerivedShape; player?: DerivedMark; banker?: DerivedMark }[] = [
+    { label: "Big eye boy", shape: "ring", player: ask.player.bigEyeBoy[0], banker: ask.banker.bigEyeBoy[0] },
+    { label: "Small road", shape: "solid", player: ask.player.smallRoad[0], banker: ask.banker.smallRoad[0] },
+    { label: "Cockroach pig", shape: "slash", player: ask.player.cockroachPig[0], banker: ask.banker.cockroachPig[0] },
   ];
 
-  const dot = (value: DerivedMark | undefined) =>
+  const dot = (value: DerivedMark | undefined, shape: DerivedShape, key: string) =>
     value ? (
-      <View style={[s.small, { borderColor: value === "red" ? p.banker : p.player }]} />
+      derivedMarkNode(value, shape, s, p, key)
     ) : (
       <Text style={{ color: p.muted }}>—</Text>
     );
@@ -195,8 +254,8 @@ export function AskTheRoad({ roads }: { roads: RoadSet }) {
         {rows.map((row) => (
           <View key={row.label} style={{ flexDirection: "row", alignItems: "center" }}>
             <Text style={{ flex: 1, color: p.text, fontSize: 13 }}>{row.label}</Text>
-            <View style={{ width: 70 }}>{dot(row.player)}</View>
-            <View style={{ width: 70 }}>{dot(row.banker)}</View>
+            <View style={{ width: 70 }}>{dot(row.player, row.shape, `${row.label}-p`)}</View>
+            <View style={{ width: 70 }}>{dot(row.banker, row.shape, `${row.label}-b`)}</View>
           </View>
         ))}
       </View>
