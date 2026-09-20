@@ -11,7 +11,7 @@ export default function OddsTable() {
   return (
     <Card title="What every bet costs" subtitle="Priced against the cards still in the shoe">
       <div className="table-scroll">
-        <table className="odds-table">
+        <table className="odds-table odds-table-fluid">
           <thead>
             <tr>
               <th scope="col">Bet</th>

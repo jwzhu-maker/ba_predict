@@ -37,7 +37,7 @@ export default function StrategyRecord() {
       subtitle={`${record.shoes} shoe${record.shoes === 1 ? "" : "s"}, ${record.coups} coups, every plan betting ${betLabel(record.bet)}`}
     >
       <div className="table-scroll">
-        <table className="odds-table">
+        <table className="odds-table odds-table-fluid">
           <thead>
             <tr>
               <th scope="col">Plan</th>

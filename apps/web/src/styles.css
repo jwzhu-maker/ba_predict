@@ -672,6 +672,53 @@ select {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
+/*
+ * Tables whose row header is a NAME beside numeric columns must not push
+ * their last column off a phone.
+ *
+ * `.odds-table` sets `white-space: nowrap` on every cell, so a table whose
+ * row headers are long strings — "Reverse D'Alembert", "Grand Martingale",
+ * "Banker Pair" — has a min-content width larger than a phone, and
+ * `width: 100%` cannot shrink below it. `.table-scroll` then hides the
+ * excess behind a sideways scroll with no affordance, and what goes is the
+ * RIGHTMOST column. On all three tables that column is the one the screen
+ * exists for: "Per unit" on the two staking-plan tables, "House edge" on
+ * the bet costs.
+ *
+ * Measured before the fix, at 320/360/390px viewports: the plan tables
+ * wanted 386px in a 266-336px holder, and the odds table overflowed at 320
+ * and 360.
+ *
+ * So here the text columns wrap and the numbers do not: a row header breaks
+ * over two lines, a multi-word column header stacks its words, and every
+ * figure stays on one line where a tabular column needs it.
+ */
+.odds-table-fluid {
+  table-layout: auto;
+}
+
+.odds-table-fluid th,
+.odds-table-fluid td {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+/* Headers and the plan name wrap; the figures never do. */
+.odds-table-fluid thead th,
+.odds-table-fluid tbody th {
+  white-space: normal;
+}
+
+.odds-table-fluid tbody th {
+  /* Keep the name column from eating the figures it is there to explain. */
+  width: 38%;
+  hyphens: auto;
+}
+
+.odds-table-fluid tbody td {
+  white-space: nowrap;
+}
+
 /* ---------- roads ---------- */
 
 .road-scroll {
