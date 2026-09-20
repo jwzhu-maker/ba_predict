@@ -128,6 +128,14 @@ export interface SessionState {
    * `coups.slice(shoeStartIndex)` instead.
    */
   shoeStartIndex: number;
+  /**
+   * Where the PREVIOUS shoe began, or null before a second shoe starts.
+   *
+   * Kept so the strategy replay still has a shoe to report on immediately
+   * after "New shoe" is pressed — which is exactly when a player wants to see
+   * how the shoe they just finished would have treated each staking plan.
+   */
+  previousShoeStartIndex: number | null;
   rules: TableRules;
   shoe: ShoeState;
   bankroll: BankrollState;
@@ -171,6 +179,7 @@ export function createSession(options: CreateSessionOptions = {}): SessionState 
     startedAt: options.startedAt ?? Date.now(),
     firstWagerAt: null,
     shoeStartIndex: 0,
+    previousShoeStartIndex: null,
     rules,
     shoe: createShoe(rules.decks),
     bankroll,

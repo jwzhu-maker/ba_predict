@@ -213,6 +213,7 @@ export function reducer(state: AppState, action: Action): AppState {
           ...state.session,
           shoe: createShoe(state.session.rules.decks),
           shoeStartIndex: state.session.coups.length,
+          previousShoeStartIndex: state.session.shoeStartIndex,
         },
         cardEntry: [],
         pendingWager: null,
@@ -253,6 +254,9 @@ export function reducer(state: AppState, action: Action): AppState {
           shoeStartIndex: decksChanged
             ? state.session.coups.length
             : state.session.shoeStartIndex,
+          previousShoeStartIndex: decksChanged
+            ? state.session.shoeStartIndex
+            : state.session.previousShoeStartIndex,
         }),
       };
     }

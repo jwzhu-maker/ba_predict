@@ -10,6 +10,7 @@ import {
 } from "@ba-predict/engine";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import ShoeRoads from "../components/ShoeRoads";
 import Sparkline from "../components/Sparkline";
 import { Btn, Card, Chip, Hint, Notice, Row, Stat, useStyles } from "../components/ui";
 import { describeEdge } from "@ba-predict/app-core";
@@ -218,6 +219,8 @@ export default function TableScreen() {
           <Btn label="New shoe" onPress={() => dispatch({ type: "new-shoe" })} />
         </Row>
       </Card>
+
+      <ShoeRoads />
 
       <Card title="Place a bet" subtitle="Or override the recommendation">
         <Row>

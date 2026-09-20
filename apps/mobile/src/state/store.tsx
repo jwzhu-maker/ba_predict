@@ -4,13 +4,16 @@ import {
   createInitialState,
   createMoneyFormatter,
   deserializeState,
+  isReplayableBet,
   lifetimeStats,
+  replayStrategies,
   reducer,
   serializeState,
   type Action,
   type AppState,
   type LifetimeStats,
   type MoneyFormatter,
+  type StrategyReplay,
 } from "@ba-predict/app-core";
 import {
   buildRoads,
@@ -120,6 +123,49 @@ export function useAdvice(): Advice {
 export function useMoney(): MoneyFormatter {
   const { currency } = useAppState();
   return useMemo(() => createMoneyFormatter(currency), [currency]);
+}
+
+/**
+ * Which shoe the strategy replay reports on, and the replay itself.
+ *
+ * The shoe in progress while it has coups, otherwise the one that just
+ * finished — pressing "New shoe" should not blank the review of the shoe you
+ * pressed it for.
+ */
+export function useShoeReplay(): { replay: StrategyReplay; finished: boolean } | null {
+  const { session } = useAppState();
+  return useMemo(() => {
+    const current = session.coups.slice(session.shoeStartIndex);
+    const previous =
+      session.previousShoeStartIndex === null
+        ? []
+        : session.coups.slice(session.previousShoeStartIndex, session.shoeStartIndex);
+    const coups = current.length > 0 ? current : previous;
+    if (coups.length === 0) return null;
+
+    const bet = isReplayableBet(session.preferredBet as never)
+      ? (session.preferredBet as Exclude<typeof session.preferredBet, "auto">)
+      : "banker";
+    const unit = session.bankroll.unitSize || 1;
+    return {
+      finished: current.length === 0,
+      replay: replayStrategies({
+        coups,
+        rules: session.rules,
+        bet,
+        progressionOptions: session.progressionOptions,
+        bankrollUnits: Math.max(1, Math.round(session.bankroll.bankroll / unit)),
+      }),
+    };
+  }, [
+    session.coups,
+    session.shoeStartIndex,
+    session.previousShoeStartIndex,
+    session.rules,
+    session.preferredBet,
+    session.progressionOptions,
+    session.bankroll,
+  ]);
 }
 
 export function useLifetime(): LifetimeStats {

@@ -130,7 +130,7 @@ select {
   position: sticky;
   bottom: 0;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 2px;
   padding: 6px 8px calc(env(safe-area-inset-bottom) + 6px);
   /* Opaque rather than translucent: the bar sits over scrolling content and
@@ -931,4 +931,28 @@ select {
   font-size: 0.74rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+/* ---------- roads inside the table screen ---------- */
+
+.road-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.road-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.row-note {
+  display: block;
+  font-size: 0.66rem;
+  font-weight: 500;
+  color: var(--warn);
+  white-space: normal;
 }
