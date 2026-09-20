@@ -1,0 +1,26 @@
+{
+  "name": "ba-predict",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Baccarat bet advisor: exact shoe-aware odds, per-bet EV, and honest bet sizing. PWA + mobile.",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*",
+    "apps/web",
+    "apps/mobile"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm run build --workspace @ba-predict/engine && npm run build --workspace @ba-predict/app-core && npm run build --workspace @ba-predict/web",
+    "dev:web": "npm run dev --workspace @ba-predict/web",
+    "dev:mobile": "npm run start --workspace @ba-predict/mobile",
+    "test": "npm run test --workspace @ba-predict/engine && npm run test --workspace @ba-predict/app-core",
+    "typecheck": "npm run typecheck --workspace @ba-predict/engine && npm run typecheck --workspace @ba-predict/app-core && npm run typecheck --workspace @ba-predict/web && npm run typecheck --workspace @ba-predict/mobile",
+    "icons": "node scripts/generate-icons.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}
