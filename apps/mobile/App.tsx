@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View, useColorScheme } from "r
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Screen } from "@ba-predict/app-core";
 import BankrollHeader from "./src/components/BankrollHeader";
+import RecordDock from "./src/components/RecordDock";
 import HistoryScreen from "./src/screens/HistoryScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import SimulatorScreen from "./src/screens/SimulatorScreen";
@@ -52,7 +53,13 @@ function Shell() {
       paddingTop: 6,
       paddingBottom: Math.max(insets.bottom, 6),
     },
-    tab: { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 10, gap: 2 },
+    tab: {
+      flex: 1,
+      alignItems: "center",
+      paddingVertical: 8,
+      borderRadius: 10,
+      gap: 2,
+    },
     tabActive: { backgroundColor: `${p.accent}1f` },
     tabGlyph: { fontSize: 16 },
     tabLabel: { fontSize: 11, fontWeight: "600" },
@@ -84,6 +91,14 @@ function Shell() {
         {screen === "history" ? <HistoryScreen /> : null}
         {screen === "settings" ? <SettingsScreen /> : null}
       </ScrollView>
+
+      {/*
+        Pinned above the tab bar, outside the ScrollView, on the Table tab
+        only. P / B / T is pressed once per coup and is the one control that
+        must never move — see `RecordDock` for why this is docked rather
+        than reserved for.
+      */}
+      {screen === "table" ? <RecordDock /> : null}
 
       <View style={styles.tabbar}>
         {TABS.map((tab) => {

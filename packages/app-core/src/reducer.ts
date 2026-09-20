@@ -12,7 +12,7 @@ import {
   type TableRules,
 } from "@ba-predict/engine";
 import { createShoe, type BettingSystemId } from "@ba-predict/engine";
-import type { BankrollState } from "@ba-predict/engine";
+import type { BankrollState, CoupRecord } from "@ba-predict/engine";
 import {
   ARCHIVE_LIMIT,
   EMPTY_EVICTED,
@@ -149,6 +149,65 @@ export type Action =
 function remember(state: AppState): SessionState[] {
   const history = [...state.history, state.session];
   return history.length > HISTORY_LIMIT ? history.slice(history.length - HISTORY_LIMIT) : history;
+}
+
+/** Everything the recorded coups have added to or taken from the bankroll. */
+function settledProfit(coups: readonly CoupRecord[]): number {
+  let total = 0;
+  for (const coup of coups) total += coup.wager?.profit ?? 0;
+  return total;
+}
+
+/**
+ * Undo the last coup without undoing anything the player has changed since.
+ *
+ * The history stack holds whole `SessionState` snapshots, and restoring one
+ * wholesale reverted the SETTINGS too. That is a real trap rather than a
+ * theoretical one, because of when people change them: you hit your
+ * stop-win, raise it in Settings to keep playing, mis-tap the next result —
+ * and Undo silently puts the old stop-win back, so the app starts refusing
+ * to stake again with no indication why. The same went for the table
+ * maximum, the unit size, the rules, the staking plan and the Kelly
+ * fraction.
+ *
+ * So only what an undoable action actually TOUCHES comes from the snapshot:
+ * the cards, the coup list, the shoe markers, the ladder's live position and
+ * the first-wager stamp. Everything else is taken from the session as it
+ * stands now.
+ *
+ * The bankroll BALANCE is the one field that is both. A coup moves it and
+ * the Settings screen can set it outright, so neither side is right on its
+ * own: restoring the snapshot would discard a correction typed in since,
+ * and keeping the current value would leave the undone coup's winnings in
+ * the bankroll. It is reversed by DELTA instead — the profit recorded in
+ * the coups the undo removes — which gives the snapshot's number when
+ * nothing else changed and preserves the correction when it did.
+ *
+ * The delta is computed from the two coup lists rather than from "the last
+ * coup", because `new-shoe` is undoable too and removes no coups at all;
+ * there the two lists agree and the delta is zero.
+ */
+function undoSession(current: SessionState, snapshot: SessionState): SessionState {
+  const undoneProfit = settledProfit(current.coups) - settledProfit(snapshot.coups);
+  return {
+    ...current,
+    shoe: snapshot.shoe,
+    coups: snapshot.coups,
+    shoeStartIndex: snapshot.shoeStartIndex,
+    previousShoeStartIndex: snapshot.previousShoeStartIndex,
+    // The ladder's live position, but only while it is the same ladder.
+    // `progression` carries BOTH the plan the player chose (a setting) and
+    // where that plan currently stands (moved by every settled coup), so
+    // restoring it wholesale put a switched-away-from plan back. Switching
+    // plans resets the ladder anyway, which is why keeping the current one
+    // in that case loses nothing.
+    progression:
+      current.progression.id === snapshot.progression.id
+        ? snapshot.progression
+        : current.progression,
+    firstWagerAt: snapshot.firstWagerAt,
+    bankroll: { ...current.bankroll, bankroll: current.bankroll.bankroll - undoneProfit },
+  };
 }
 
 /**
@@ -337,7 +396,8 @@ export function reducer(state: AppState, action: Action): AppState {
       if (!previous) return state;
       return {
         ...state,
-        session: previous,
+        // Not `previous` wholesale: that reverts settings changed since.
+        session: undoSession(state.session, previous),
         history: state.history.slice(0, -1),
         cardEntry: [],
         pendingWager: null,

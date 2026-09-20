@@ -1,5 +1,5 @@
 import { nextHandDetail, readSystemNext, tieReconciliation } from "@ba-predict/app-core";
-import { Card, Notice } from "./Primitives";
+import { Card } from "./Primitives";
 import { useAppState, useMoney, useSystemRun } from "../state/store";
 
 /**
@@ -111,12 +111,17 @@ export default function SystemNextBet() {
       */}
       {finished ? null : <p className="field-hint">{tieReconciliation(run)}</p>}
 
-      {run.approximate ? (
-        <Notice tone="warn">
-          Your table pays a reduced rate on a Banker win with 6, which recorded coups do not
-          capture, so this shoe&rsquo;s Banker results are slightly generous.
-        </Notice>
-      ) : null}
+      {/*
+        The "Banker results are slightly generous" caveat is NOT here, and
+        that is the point. It qualifies the shoe's TOTALS, which this card
+        does not show — it shows one side and one stake, neither of which a
+        reduced Banker-6 payout touches. The run card on the Strategies tab
+        carries it, beside the numbers it is about.
+
+        It also appeared the first time a Banker hand was settled and stayed
+        for the rest of the shoe, which grew this card mid-shoe and moved
+        the Record buttons — the one thing the floor above exists to stop.
+      */}
     </Card>
   );
 }

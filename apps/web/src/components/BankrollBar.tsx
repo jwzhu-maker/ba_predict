@@ -49,7 +49,7 @@ export default function BankrollBar() {
         <span style={{ width: `${progress * 100}%` }} />
       </div>
 
-      <p className="bankroll-meta bankroll-meta-bottom">
+      <p className="bankroll-meta">
         Next stake {formatUnits(session.progression.units)}u &middot;{" "}
         {session.progression.id.replace(/-/g, " ")} &middot; {stats.wagers} wagers &middot;{" "}
         {stats.totalWagered > 0

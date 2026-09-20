@@ -92,10 +92,12 @@ export default function AdviceCard() {
         </button>
       ) : null}
 
+      {/* Terse for the same reason the skip reasons are: this card reserves
+          a floor, and the longest thing it can say sets that floor for every
+          other state. The amount above is the placeable one either way. */}
       {call.clipped && call.requestedAmount !== null ? (
         <Notice tone="warn">
-          The ladder asks for {money.format(call.requestedAmount)} here, but the table maximum is{" "}
-          {money.format(call.amount)}. The amount above is what you can actually put on.
+          Table maximum &mdash; the ladder wanted {money.format(call.requestedAmount)}.
         </Notice>
       ) : null}
 

@@ -237,20 +237,28 @@ export function resolveTableCall(input: TableCallInput): TableCall {
   return { ...call, stakes: false, unaffordable, blockedReason };
 }
 
-/** Plain English for why a system is not betting this coup. */
+/**
+ * Plain English for why a system is not betting this coup.
+ *
+ * Kept SHORT on purpose. This card reserves a height so the Record buttons
+ * below it cannot move, and that floor has to cover the longest thing the
+ * card can say — so every extra clause here is whitespace under every other
+ * state, on the narrowest phone, forever. The system's own card directly
+ * below gives each of these in full (why the warm-up is twelve hands, which
+ * group resumes when and at what stake, that ties are not counted), so
+ * nothing is lost by this one being terse.
+ */
 function describeSystemSkip(run: SystemRun): string {
   const { config, next } = run;
   switch (next.skipped) {
     case "warm-up": {
       const left = Math.max(0, config.lookback + 1 - next.hand);
-      return `Watching. ${left} more hand${left === 1 ? "" : "s"} before the first bet — hand ${
-        config.lookback + 1
-      } is the first with a hand ${config.lookback} back to mirror.`;
+      return `Watching. ${left} more hand${left === 1 ? "" : "s"} before the first bet.`;
     }
     case "group-over":
       return `Group ${next.group} lost, so ${run.name} sits out the rest of it.`;
     case "past-last-hand":
-      return `Done for this shoe — hand ${config.lastHand} is the last one ${run.name} plays. Ties are not counted, so there may still be cards left.`;
+      return `Done for this shoe — hand ${config.lastHand} is the last one ${run.name} plays.`;
     default:
       return `${run.name} is not betting this coup.`;
   }

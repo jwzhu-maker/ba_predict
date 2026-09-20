@@ -431,3 +431,107 @@ describe("the Why this fold", () => {
     expect(after.session).toBe(state.session);
   });
 });
+
+describe("undo leaves settings alone", () => {
+  /**
+   * The reported case, and the reason this matters at all: you hit your
+   * stop-win, raise it in Settings to keep playing, mis-tap the next result
+   * — and a whole-snapshot undo puts the old stop-win back, so the app
+   * starts refusing to stake again with nothing on screen saying why.
+   */
+  it("keeps a stop-win raised after the coup being undone", () => {
+    const state = play(
+      createInitialState(),
+      { type: "place-wager", wager: { bet: "banker", amount: 10 } },
+      { type: "record-coup", coup: { outcome: "banker" } },
+      { type: "update-bankroll", bankroll: { stopWin: 5000 } },
+    );
+    expect(state.session.bankroll.stopWin).toBe(5000);
+
+    const undone = reducer(state, { type: "undo" });
+    expect(undone.session.bankroll.stopWin).toBe(5000);
+    // And the coup really was undone.
+    expect(undone.session.coups).toHaveLength(0);
+    expect(undone.session.bankroll.bankroll).toBe(1000);
+  });
+
+  it("keeps every other setting changed since the coup", () => {
+    const before = createInitialState();
+    const state = play(
+      before,
+      { type: "place-wager", wager: { bet: "banker", amount: 10 } },
+      { type: "record-coup", coup: { outcome: "banker" } },
+      { type: "update-bankroll", bankroll: { stopLoss: 4000, tableMax: 9000, unitSize: 50 } },
+      { type: "update-rules", rules: { decks: 6 } },
+      { type: "set-progression", progression: "martingale" },
+      { type: "set-preferred-bet", bet: "player" },
+      { type: "set-kelly-multiplier", multiplier: 0.5 },
+    );
+
+    const undone = reducer(state, { type: "undo" });
+    expect(undone.session.bankroll.stopLoss).toBe(4000);
+    expect(undone.session.bankroll.tableMax).toBe(9000);
+    expect(undone.session.bankroll.unitSize).toBe(50);
+    expect(undone.session.rules.decks).toBe(6);
+    // The plan the player switched to survives; only its live position is
+    // rolled back, and switching plans already reset that.
+    expect(undone.session.progression.id).toBe("martingale");
+    expect(undone.session.preferredBet).toBe("player");
+    expect(undone.session.kellyMultiplier).toBe(0.5);
+    expect(undone.session.coups).toHaveLength(0);
+  });
+
+  it("reverses the coup by delta, so a corrected balance survives", () => {
+    // Banker at 10 pays 9.50, so the balance goes 1000 -> 1009.50. The
+    // player then corrects it to 2000 (they miscounted their chips), and
+    // undo must leave 1990.50 rather than snapping back to 1000.
+    const state = play(
+      createInitialState(),
+      { type: "place-wager", wager: { bet: "banker", amount: 10 } },
+      { type: "record-coup", coup: { outcome: "banker" } },
+    );
+    expect(state.session.bankroll.bankroll).toBeCloseTo(1009.5, 8);
+
+    const corrected = reducer(state, { type: "update-bankroll", bankroll: { bankroll: 2000 } });
+    const undone = reducer(corrected, { type: "undo" });
+    expect(undone.session.bankroll.bankroll).toBeCloseTo(1990.5, 8);
+  });
+
+  it("still restores the shoe, the ladder and the coup list", () => {
+    const state = play(
+      createInitialState(),
+      { type: "set-progression", progression: "martingale" },
+      { type: "add-card", rank: "5" },
+      { type: "add-card", rank: "K" },
+      { type: "place-wager", wager: { bet: "banker", amount: 10 } },
+      { type: "record-coup", coup: { outcome: "player" } },
+    );
+    expect(state.session.progression.units).toBe(2);
+    const dealt = cardsRemaining(createShoe(8)) - cardsRemaining(state.session.shoe);
+    expect(dealt).toBe(2);
+
+    const undone = reducer(state, { type: "undo" });
+    expect(undone.session.progression.units).toBe(1);
+    expect(undone.session.coups).toHaveLength(0);
+    expect(cardsRemaining(undone.session.shoe)).toBe(cardsRemaining(createShoe(8)));
+  });
+
+  it("undoes a new shoe without moving any money", () => {
+    // `new-shoe` is undoable too and removes no coups, so the delta must be
+    // zero rather than "the last coup's profit".
+    const state = play(
+      createInitialState(),
+      { type: "place-wager", wager: { bet: "banker", amount: 10 } },
+      { type: "record-coup", coup: { outcome: "banker" } },
+      { type: "new-shoe" },
+      { type: "update-bankroll", bankroll: { stopWin: 777 } },
+    );
+    const balance = state.session.bankroll.bankroll;
+    const undone = reducer(state, { type: "undo" });
+
+    expect(undone.session.bankroll.bankroll).toBeCloseTo(balance, 8);
+    expect(undone.session.bankroll.stopWin).toBe(777);
+    expect(undone.session.shoeStartIndex).toBe(0);
+    expect(undone.session.coups).toHaveLength(1);
+  });
+});

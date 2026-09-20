@@ -1,8 +1,8 @@
 import { nextHandDetail, readSystemNext, tieReconciliation } from "@ba-predict/app-core";
-import { Dimensions, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { useAppState, useMoney, useSystemRun } from "../state/store";
 import { usePalette } from "../theme";
-import { Card, Hint, Notice, Prose } from "./ui";
+import { Card, Hint, Prose } from "./ui";
 
 /**
  * The active system's own card: its full reading of the next hand.
@@ -25,7 +25,6 @@ export default function SystemNextBet() {
   const { run, finished } = useSystemRun();
   const money = useMoney();
   const p = usePalette();
-  const narrowPhone = Dimensions.get("window").width <= 340;
   const reading = readSystemNext(run);
   const next = run.next;
 
@@ -102,21 +101,6 @@ export default function SystemNextBet() {
 
   return (
     <Card
-      // Reserved so the Record buttons below do not move between coups.
-      //
-      // Mirrored from `--system-card-min-height` in the web stylesheet,
-      // which is where the derivation lives — the two cards render the same
-      // body helpers, so the same content drives both. It was left at the
-      // OLD web value when that one was re-measured after the tie
-      // reconciliation line became unconditional, at which point the floor
-      // stopped binding here and these buttons started moving again on
-      // mobile alone.
-      //
-      // Stated plainly: these numbers are the web measurement, not a
-      // measurement taken on a device. RN has no cascade and no media
-      // query, so the narrow tier is read off the window the same way the
-      // stylesheet reads it off the viewport.
-      style={{ minHeight: narrowPhone ? 275 : 260 }}
       title={`${run.name} says`}
       subtitle={finished ? "Last shoe" : `Hand ${next.hand} of this shoe, ties not counted`}
     >
@@ -125,12 +109,13 @@ export default function SystemNextBet() {
           only once a tie was dealt made the card grow mid-shoe and moved the
           Record buttons under the thumb reaching for them. */}
       {finished ? null : <Hint>{tieReconciliation(run)}</Hint>}
-      {run.approximate ? (
-        <Notice tone="warn">
-          Your table pays a reduced rate on a Banker win with 6, which recorded coups do not
-          capture, so this shoe’s Banker results are slightly generous.
-        </Notice>
-      ) : null}
+      {/*
+        The "Banker results are slightly generous" caveat is NOT here. It
+        qualifies the shoe's TOTALS, which this card does not show, and it
+        appeared the first time a Banker hand was settled — growing the card
+        mid-shoe and moving the Record buttons. The run card on the
+        Strategies tab carries it, beside the numbers it is about.
+      */}
     </Card>
   );
 }

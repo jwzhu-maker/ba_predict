@@ -4,7 +4,6 @@ import {
   cardsRemaining,
   penetration,
   type BetType,
-  type Outcome,
   type Rank,
 } from "@ba-predict/engine";
 import { useState } from "react";
@@ -40,10 +39,8 @@ export default function TableScreen() {
   const stats = useStats();
   const money = useMoney();
 
-  const [playerPair, setPlayerPair] = useState(false);
-  const [bankerPair, setBankerPair] = useState(false);
-  const [cardCount, setCardCount] = useState<4 | 5 | 6 | null>(null);
-  const [bankerWinOnSix, setBankerWinOnSix] = useState(false);
+  // The per-coup modifiers and the `record` dispatch that used them moved
+  // to `RecordDock` with the buttons they belong to.
   // In app state, not local: the tab navigator unmounts this screen, so a
   // `useState` here folded the reasoning again every time the user looked at
   // the roads and came back.
@@ -53,27 +50,6 @@ export default function TableScreen() {
   const [betOverride, setBetOverride] = useState<BetType | null>(null);
   const [amountOverride, setAmountOverride] = useState<number | null>(null);
   const [followedCall, setFollowedCall] = useState("");
-
-  const needsCardCount = settling?.bet === "big" || settling?.bet === "small";
-  const needsBankerSix = session.rules.bankerSixPayout !== null && settling?.bet === "banker";
-
-  const record = (outcome: Outcome) => {
-    dispatch({
-      type: "record-coup",
-      wager: callToWager(call),
-      coup: {
-        outcome,
-        playerPair,
-        bankerPair,
-        ...(cardCount !== null ? { cardCount } : {}),
-        ...(needsBankerSix && outcome === "banker" ? { bankerWinOnSix } : {}),
-      },
-    });
-    setPlayerPair(false);
-    setBankerPair(false);
-    setCardCount(null);
-    setBankerWinOnSix(false);
-  };
 
   const callKey = `${call.bet ?? "none"}:${call.amount}`;
   if (callKey !== followedCall) {
@@ -119,7 +95,12 @@ export default function TableScreen() {
         on a live call and drops all four on a warm-up. See the matching
         note in the web stylesheet for how the number was derived.
       */}
-      <View style={[local.advice, { minHeight: 385 }]}>
+      {/*
+        No reserved height any more. The Record buttons it existed to hold
+        still are docked above the tab bar now, so nothing this card does
+        can move them and it is free to be as tall as its content.
+      */}
+      <View style={local.advice}>
         <Text style={local.kicker}>
           {advice.action === "stop"
             ? "STOP"
@@ -172,11 +153,9 @@ export default function TableScreen() {
 
         {call.clipped && call.requestedAmount !== null ? (
           <Notice tone="warn">
-            The ladder asks for {money.format(call.requestedAmount)} here, but the table maximum
-            is {money.format(call.amount)}. The amount above is what you can actually put on.
+            Table maximum — the ladder wanted {money.format(call.requestedAmount)}.
           </Notice>
         ) : null}
-
 
         {/* Folded: these lines are the same every hand, and open they were
             most of the height this card has to reserve. */}
@@ -197,9 +176,7 @@ export default function TableScreen() {
             change what a bet costs — only how much and how often you bet.
           </Hint>
         ) : null}
-        {showWhy
-          ? advice.reasons.map((reason) => <Hint key={reason}>• {reason}</Hint>)
-          : null}
+        {showWhy ? advice.reasons.map((reason) => <Hint key={reason}>• {reason}</Hint>) : null}
         {/* The engine's warnings are computed from the ENGINE's stake, so
             against a system's amount they describe money nobody is putting
             down — the same trap `sizingReason` was pulled out of `reasons`
@@ -215,80 +192,13 @@ export default function TableScreen() {
 
       <SystemNextBet />
 
-      <Card
-        title="Record the result"
-        subtitle={
-          settling
-            ? `${money.format(settling.amount)} on ${betLabel(settling.bet)}`
-            // Short enough for one line at 320px: the long version wrapped to
-            // two and moved the Record buttons whenever a wager came or went.
-            // The Bet card above already spells out that nothing is staked.
-            : "Nothing staked — road only"
-        }
-      >
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          {(
-            [
-              ["player", "P", "Player", p.player],
-              ["banker", "B", "Banker", p.banker],
-              ["tie", "T", "Tie", p.tie],
-            ] as const
-          ).map(([outcome, glyph, label, colour]) => (
-            <Pressable
-              key={outcome}
-              accessibilityRole="button"
-              onPress={() => record(outcome)}
-              style={({ pressed }) => [
-                local.outcome,
-                { borderColor: `${colour}88`, backgroundColor: p.surface2 },
-                pressed && { opacity: 0.7 },
-              ]}
-            >
-              <Text style={[local.outcomeGlyph, { color: colour }]}>{glyph}</Text>
-              <Text style={[local.outcomeLabel, { color: colour }]}>{label}</Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <Row>
-          <Chip label="Player pair" active={playerPair} onPress={() => setPlayerPair((v) => !v)} />
-          <Chip label="Banker pair" active={bankerPair} onPress={() => setBankerPair((v) => !v)} />
-        </Row>
-
-        {needsCardCount ? (
-          <View style={{ gap: 6 }}>
-            <Text style={s.fieldLabel}>
-              CARDS DEALT (NEEDED TO SETTLE {betLabel(settling!.bet).toUpperCase()})
-            </Text>
-            <Row>
-              {([4, 5, 6] as const).map((count) => (
-                <Chip
-                  key={count}
-                  label={String(count)}
-                  active={cardCount === count}
-                  onPress={() => setCardCount(count)}
-                />
-              ))}
-            </Row>
-          </View>
-        ) : null}
-
-        {needsBankerSix ? (
-          <View style={{ gap: 6 }}>
-            <Text style={s.fieldLabel}>THIS TABLE PAYS LESS ON A BANKER WIN WITH 6</Text>
-            <Row>
-              <Chip
-                label="Banker won on 6"
-                active={bankerWinOnSix}
-                onPress={() => setBankerWinOnSix((v) => !v)}
-              />
-            </Row>
-          </View>
-        ) : null}
-
-        {lastSettlement?.unsettled ? (
-          <Notice tone="warn">{lastSettlement.unsettled}</Notice>
-        ) : null}
+      {/*
+        Recording moved to `RecordDock`, pinned above the tab bar. What is
+        left are the two actions taken once in a while rather than once a
+        hand — see the web `CoupEntry` for the same split.
+      */}
+      <Card title="This shoe" subtitle="Fixing a mis-tap, and starting the next one">
+        {lastSettlement?.unsettled ? <Notice tone="warn">{lastSettlement.unsettled}</Notice> : null}
 
         <Row>
           <Btn
@@ -298,6 +208,11 @@ export default function TableScreen() {
           />
           <Btn label="New shoe" onPress={() => dispatch({ type: "new-shoe" })} />
         </Row>
+
+        <Hint>
+          New shoe swaps the cards and leaves the sitting — and the money — running across shoes. To
+          close the session and file it under History, use Start over at the top of the History tab.
+        </Hint>
       </Card>
 
       <ShoeRoads />
@@ -440,8 +355,8 @@ export default function TableScreen() {
           </View>
           <Hint>
             House edge is quoted per unit staked, ties included. It is the fraction of everything
-            you put on the table that you should expect to keep losing, and no staking plan
-            changes it.
+            you put on the table that you should expect to keep losing, and no staking plan changes
+            it.
           </Hint>
         </Card>
       ) : null}
@@ -463,17 +378,14 @@ export default function TableScreen() {
             tone={stats.maxDrawdown > 0 ? "bad" : "muted"}
           />
         </Row>
-        <Sparkline
-          values={stats.bankrollCurve}
-          baseline={session.bankroll.startingBankroll}
-        />
+        <Sparkline values={stats.bankrollCurve} baseline={session.bankroll.startingBankroll} />
         {stats.totalWagered > 0 ? (
           <Hint>
             {describeEdge(stats.actualEdge).ahead
               ? `You are ahead by ${formatPercent(describeEdge(stats.actualEdge).magnitude)} of everything you staked so far.`
               : `You have paid ${formatPercent(describeEdge(stats.actualEdge).magnitude)} of everything you staked so far.`}{" "}
-            Over a long enough session that converges on the table's edge; over one session it
-            is mostly luck in either direction.
+            Over a long enough session that converges on the table's edge; over one session it is
+            mostly luck in either direction.
           </Hint>
         ) : null}
       </Card>
@@ -492,7 +404,11 @@ export default function TableScreen() {
                 accessibilityRole="button"
                 disabled={disabled}
                 onPress={() => dispatch({ type: "add-card", rank })}
-                style={[local.key, { borderColor: p.border, backgroundColor: p.surface2 }, disabled && { opacity: 0.35 }]}
+                style={[
+                  local.key,
+                  { borderColor: p.border, backgroundColor: p.surface2 },
+                  disabled && { opacity: 0.35 },
+                ]}
               >
                 <Text style={{ color: p.text, fontWeight: "700", fontSize: 14 }}>{rank}</Text>
                 <Text style={{ color: p.muted, fontSize: 10 }}>{left}</Text>
@@ -530,8 +446,8 @@ export default function TableScreen() {
             broken: a coup is at most six cards. */}
         {cardEntry.length >= 6 ? (
           <Hint tone="warn">
-            That is the whole coup — six cards is the most one can use (two each, plus at most
-            one third card a side). Record the result, or Backspace to correct.
+            That is the whole coup — six cards is the most one can use (two each, plus at most one
+            third card a side). Record the result, or Backspace to correct.
           </Hint>
         ) : null}
         <Hint>
@@ -567,17 +483,6 @@ function useLocalStyles() {
     kicker: { color: p.muted, fontSize: 11, letterSpacing: 2, fontWeight: "700" },
     adviceBet: { color: p.text, fontSize: 32, fontWeight: "800" },
     adviceAmount: { fontSize: 40, fontWeight: "800" },
-    outcome: {
-      flex: 1,
-      minHeight: 78,
-      borderRadius: 12,
-      borderWidth: StyleSheet.hairlineWidth,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 4,
-    },
-    outcomeGlyph: { fontSize: 24, fontWeight: "800" },
-    outcomeLabel: { fontSize: 12, fontWeight: "600" },
     stepperValue: { flex: 1, textAlign: "center", color: p.text, fontSize: 18, fontWeight: "700" },
     cell: { fontSize: 13 },
     key: {

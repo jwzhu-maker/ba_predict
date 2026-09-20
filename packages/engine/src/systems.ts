@@ -479,6 +479,12 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
 
     const settlement = settleWager(
       { bet: side, amount: stake },
+      // `CoupRecord` carries outcome and the two pair flags and nothing
+      // else, so a Banker leg on a no-commission table always comes back
+      // `unsettled` here — the "slightly generous" caveat the run card
+      // shows. Fixing that means persisting `bankerWinOnSix` on the coup,
+      // which the shoe archive's one-character-per-coup encoding cannot
+      // carry as it stands. Deliberately not done here.
       {
         outcome: entry.outcome,
         playerPair: entry.coup.playerPair,

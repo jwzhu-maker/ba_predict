@@ -336,6 +336,7 @@ describe("Reverse 12", () => {
     expect(run(`${WARMUP}B`).approximate).toBe(false);
   });
 
+
   it("does nothing with an empty shoe", () => {
     const result = run("");
     expect(result).toMatchObject({ bets: 0, net: 0, staked: 0, handsAvailable: 0 });

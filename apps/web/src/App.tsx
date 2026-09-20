@@ -1,4 +1,5 @@
 import BankrollHeader from "./components/BankrollHeader";
+import RecordDock from "./components/RecordDock";
 import HistoryScreen from "./screens/HistoryScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import SimulatorScreen from "./screens/SimulatorScreen";
@@ -40,22 +41,37 @@ export default function App() {
         {screen === "settings" ? <SettingsScreen /> : null}
       </main>
 
-      <nav className="tabbar" aria-label="Sections">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            className={`tab${screen === tab.id ? " tab-active" : ""}`}
-            aria-current={screen === tab.id ? "page" : undefined}
-            onClick={() => dispatch({ type: "set-screen", screen: tab.id })}
-          >
-            <span className="tab-glyph" aria-hidden="true">
-              {tab.glyph}
-            </span>
-            <span className="tab-label">{tab.label}</span>
-          </button>
-        ))}
-      </nav>
+      {/*
+        Everything docked to the bottom, in one sticky block: the Record
+        buttons (Table tab only) and the tab bar. One sticky container
+        rather than two, because two elements both stuck to `bottom: 0`
+        land on top of each other.
+
+        Order matters. P / B / T is the last row inside the dock, so
+        anything the dock adds above it — a card-count row for a Big or
+        Small wager — grows the dock UPWARD and leaves the tap targets
+        exactly where the thumb left them.
+      */}
+      <div className="app-dock">
+        {screen === "table" ? <RecordDock /> : null}
+
+        <nav className="tabbar" aria-label="Sections">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={`tab${screen === tab.id ? " tab-active" : ""}`}
+              aria-current={screen === tab.id ? "page" : undefined}
+              onClick={() => dispatch({ type: "set-screen", screen: tab.id })}
+            >
+              <span className="tab-glyph" aria-hidden="true">
+                {tab.glyph}
+              </span>
+              <span className="tab-label">{tab.label}</span>
+            </button>
+          ))}
+        </nav>
+      </div>
     </div>
   );
 }
