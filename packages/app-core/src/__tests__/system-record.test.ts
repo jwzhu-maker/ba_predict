@@ -181,4 +181,38 @@ describe("system record", () => {
     expect(record.perfectGroups).toBeGreaterThan(0);
     expect(record.perfectGroups / record.groups).toBeLessThan(0.05);
   });
+
+  it("totals the system it is given, and says which one it totalled", () => {
+    // The same archive under both rules. Reverse 12 sits out the rest of a
+    // group it has lost, so it must place strictly fewer bets than a rule
+    // that backs every hand — and the record has to name the one it ran, or
+    // a card titled "Reverse Streak 4 record" reports Reverse 12's numbers.
+    const shoes = [shoe(`${WARMUP}BBPPPPPPPP`, 1), shoe(`${WARMUP}PBPBPBPBPB`, 2)];
+
+    const gated = aggregateSystemRecord({ ...base, shoes, system: "reverse-12" });
+    const open = aggregateSystemRecord({ ...base, shoes, system: "reverse-streak-4" });
+
+    expect(gated).toMatchObject({ id: "reverse-12", name: "Reverse 12" });
+    expect(open).toMatchObject({ id: "reverse-streak-4", name: "Reverse Streak 4" });
+    expect(open.bets).toBeGreaterThan(gated.bets);
+    // Twenty-two hands a shoe, ten of them past the warm-up, all staked.
+    expect(open.bets).toBe(20);
+    expect(open.config.maxLadderSteps).toBe(4);
+    expect(gated.config.maxLadderSteps).toBe(6);
+  });
+
+  it("falls back to the default when no system is named", () => {
+    const shoes = [shoe(`${WARMUP}BBPPPP`, 1)];
+    expect(aggregateSystemRecord({ ...base, shoes }).id).toBe("reverse-12");
+    expect(aggregateSystemRecord({ ...base, shoes, system: null }).id).toBe("reverse-12");
+  });
+
+  it("describes the named system even with nothing archived", () => {
+    // The empty-record card still carries a name and a config, and they came
+    // from a bare run rather than from the first shoe — so they have to be
+    // the right system's.
+    const empty = aggregateSystemRecord({ ...base, shoes: [], system: "reverse-streak-4" });
+    expect(empty).toMatchObject({ id: "reverse-streak-4", name: "Reverse Streak 4", shoes: 0 });
+    expect(empty.config.groupsGateBetting).toBe(false);
+  });
 });

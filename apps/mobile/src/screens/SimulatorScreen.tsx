@@ -8,6 +8,7 @@ import {
 import { useState } from "react";
 import { View } from "react-native";
 import ShoeReplay from "../components/ShoeReplay";
+import StrategyPicker from "../components/StrategyPicker";
 import StrategyRecord from "../components/StrategyRecord";
 import SystemRecord from "../components/SystemRecord";
 import SystemRun from "../components/SystemRun";
@@ -70,8 +71,10 @@ export default function SimulatorScreen() {
 
   return (
     <View style={{ gap: 12 }}>
-      {/* Your own rule leads, because it is the one you are actually playing.
-          The ten built-in plans below are the comparison, not the headline. */}
+      {/* The choice comes first: it is the first decision of the sitting and
+          it is what the Table tab then instructs. */}
+      <StrategyPicker />
+
       <SystemRun />
 
       <SystemRecord />

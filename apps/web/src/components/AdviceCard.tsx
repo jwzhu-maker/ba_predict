@@ -1,85 +1,159 @@
 import { betLabel } from "@ba-predict/engine";
 import { formatPercent } from "../lib/format";
-import { useAdvice, useAppState, useDispatch, useMoney } from "../state/store";
+import { useAdvice, useAppState, useDispatch, useMoney, useTableCall } from "../state/store";
 import { Notice } from "./Primitives";
 
-const HEADLINE: Record<string, string> = {
-  bet: "Bet",
-  "sit-out": "Sit this one out",
-  stop: "Stop",
-  shuffle: "New shoe",
-};
-
 /**
- * The headline answer to "what do I bet, and how much".
+ * The one instruction on the table: what to put down on the next coup.
  *
- * It deliberately shows the cost of the bet next to the bet itself. The
- * number is small per coup and that is exactly why it belongs on screen: the
- * edge is invisible hand-to-hand and decisive over a session.
+ * Two things about this card are deliberate and easy to undo by accident.
+ *
+ * It shows the ACTIVE SYSTEM's call when one is selected, not the engine's
+ * flat recommendation. A player who has chosen Reverse 12 is playing Reverse
+ * 12; showing them the engine's $10 beside the rule's $400 gave them two
+ * answers and no way to tell which the app would actually stake.
+ *
+ * And the stake is opt-OUT. Recording the result settles against whatever
+ * this card shows, so the only button here is the one for the exception —
+ * sitting a coup out. "Put it on the table" was a tap that had to be made on
+ * every single hand to make the app behave the way it already read.
  */
 export default function AdviceCard() {
+  const call = useTableCall();
   const advice = useAdvice();
   const money = useMoney();
   const dispatch = useDispatch();
-  const { pendingWager } = useAppState();
+  const { skipNextCoup, adviceReasonsOpen } = useAppState();
 
-  // Prefixed `advice-tone-` rather than `advice-`: a bare `advice-bet`
-  // modifier collides with the `.advice-bet` headline class and hands the
-  // whole card that heading's font.
-  const tone =
-    advice.action === "stop" ? "stop" : advice.action === "bet" ? "bet" : "neutral";
+  const betting = call.bet !== null;
+  // A stop is the app's most important message and it must keep its colour
+  // and its word. `betting` is false on a stop with no system running, so
+  // keying the tone off `betting` alone rendered the stop-loss card as a
+  // neutral "Bet" over a grey "No bet".
+  const stopping = advice.action === "stop";
+  const tone = stopping ? "stop" : betting ? "bet" : "neutral";
+
+  const kicker = stopping
+    ? "Stop"
+    : call.source === "manual"
+      ? "Your bet"
+      : call.source === "skipped"
+        ? "Sitting out"
+        : (call.systemName ?? "Bet");
+
+  // The engine's cost line is only meaningful for a bet it priced.
+  const edge = call.bet ? advice.valuations?.[call.bet]?.houseEdge : undefined;
 
   return (
     <section className={`advice advice-tone-${tone}`}>
-      <p className="advice-kicker">{HEADLINE[advice.action]}</p>
+      <p className="advice-kicker">{kicker}</p>
 
-      {advice.action === "bet" && advice.bet ? (
+      {betting ? (
         <>
-          <p className="advice-bet">{betLabel(advice.bet)}</p>
-          <p className="advice-amount">{money.format(advice.amount)}</p>
-          <p className="advice-cost">
-            {formatPercent(advice.valuations![advice.bet].houseEdge)} house edge &middot; costs{" "}
-            {money.format(advice.expectedCost)} per coup on average
-          </p>
-          <button
-            type="button"
-            className="button button-primary advice-action"
-            disabled={
-              pendingWager?.bet === advice.bet && pendingWager?.amount === advice.amount
-            }
-            onClick={() =>
-              dispatch({
-                type: "place-wager",
-                wager: { bet: advice.bet!, amount: advice.amount },
-              })
-            }
-          >
-            {pendingWager?.bet === advice.bet && pendingWager?.amount === advice.amount
-              ? "On the table"
-              : "Put it on the table"}
-          </button>
+          <p className="advice-bet">{betLabel(call.bet!)}</p>
+          <p className="advice-amount">{money.format(call.amount)}</p>
+          {edge !== undefined ? (
+            <p className="advice-cost">
+              {formatPercent(edge)} house edge &middot; costs {money.format(call.amount * edge)} on
+              this wager
+            </p>
+          ) : null}
+          {call.detail ? <p className="advice-detail">{call.detail}</p> : null}
         </>
       ) : (
-        <p className="advice-bet advice-bet-quiet">
-          {advice.action === "stop"
-            ? "Walk away"
-            : advice.action === "shuffle"
-              ? "Shoe exhausted"
-              : "No stake"}
-        </p>
+        <>
+          <p className="advice-bet advice-bet-quiet">No bet</p>
+          {call.noBetReason ? <p className="advice-detail">{call.noBetReason}</p> : null}
+        </>
       )}
 
-      <ul className="advice-reasons">
-        {advice.reasons.map((reason) => (
-          <li key={reason}>{reason}</li>
-        ))}
-      </ul>
+      {/* `stakes`, not `betting`: the card can be pointing at Player 400
+          while observe mode, a stop or the bankroll refuses to act on it. */}
+      <p className="advice-settle">
+        {call.stakes
+          ? `Recording the result will settle ${money.format(call.amount)} on ${betLabel(call.bet!)}.`
+          : "Recording the result will stake nothing."}
+      </p>
 
-      {advice.warnings.map((warning) => (
-        <Notice key={warning} tone="warn">
-          {warning}
+      {call.blockedReason ? <Notice tone="warn">{call.blockedReason}</Notice> : null}
+
+      {/*
+        The only control here, because betting the suggestion is the default
+        path and needs no confirmation. Red because it is the exception, and
+        toggleable because pressing it by mistake must cost one tap.
+      */}
+      {call.stakes || skipNextCoup ? (
+        <button
+          type="button"
+          className={`button advice-action ${skipNextCoup ? "button-primary" : "button-danger"}`}
+          onClick={() => dispatch({ type: "skip-next-coup", skip: !skipNextCoup })}
+        >
+          {skipNextCoup ? "Bet after all" : "I don't bet this time"}
+        </button>
+      ) : null}
+
+      {/* Terse for the same reason the skip reasons are: this card reserves
+          a floor, and the longest thing it can say sets that floor for every
+          other state. The amount above is the placeable one either way. */}
+      {call.clipped && call.requestedAmount !== null ? (
+        <Notice tone="warn">
+          Table maximum &mdash; the ladder wanted {money.format(call.requestedAmount)}.
         </Notice>
-      ))}
+      ) : null}
+
+      {/*
+        Folded away by default. These lines are the app's honesty and they
+        are worth keeping, but they are the SAME every hand — and left open
+        they were about 130px of the height this card has to reserve to stop
+        the Record buttons moving, on the screen where reaching those buttons
+        matters most.
+      */}
+      <details
+        className="advice-why"
+        // Controlled from app state, not left to the element's own memory:
+        // switching tabs unmounts this screen, so a `<details>` the user had
+        // just opened came back folded.
+        open={adviceReasonsOpen}
+        onToggle={(event) =>
+          dispatch({
+            type: "set-advice-reasons-open",
+            open: (event.currentTarget as HTMLDetailsElement).open,
+          })
+        }
+      >
+        <summary>Why this</summary>
+        <ul className="advice-reasons">
+          {advice.reasons.map((reason) => (
+            <li key={reason}>{reason}</li>
+          ))}
+        {/* Only while the engine's amount is the one on the table — a system
+            or a hand-placed wager makes this sentence describe a stake that
+            is not about to be placed. */}
+          {call.engineSizes && advice.sizingReason ? <li>{advice.sizingReason}</li> : null}
+          {call.source === "system" && call.systemName ? (
+            <li>
+              {call.systemName} is setting the side and the stake here, not the engine. It
+              cannot change what a bet costs &mdash; only how much and how often you bet.
+            </li>
+          ) : null}
+        </ul>
+      </details>
+
+      {/*
+        The engine's warnings are all computed from the ENGINE's stake
+        ("this is 12% of your bankroll", "the next step needs more than the
+        table allows"), so against a system's or a hand-placed amount they
+        describe money nobody is putting down — the same trap `sizingReason`
+        was pulled out of `reasons` for. The stake-shaped guards that DO
+        apply to the call are `blockedReason` and the clip notice above.
+      */}
+      {call.engineSizes
+        ? advice.warnings.map((warning) => (
+            <Notice key={warning} tone="warn">
+              {warning}
+            </Notice>
+          ))
+        : null}
     </section>
   );
 }

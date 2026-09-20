@@ -8,6 +8,7 @@ import {
 import { useState } from "react";
 import { Card, NumberField, Stat } from "../components/Primitives";
 import ShoeReplay from "../components/ShoeReplay";
+import StrategyPicker from "../components/StrategyPicker";
 import StrategyRecord from "../components/StrategyRecord";
 import SystemRecord from "../components/SystemRecord";
 import SystemRun from "../components/SystemRun";
@@ -70,8 +71,11 @@ export default function SimulatorScreen() {
 
   return (
     <div className="screen">
-      {/* Your own rule leads, because it is the one you are actually playing.
-          The ten built-in plans below are the comparison, not the headline. */}
+      {/* The choice comes first: it is the first decision of the sitting and
+          it is what the Table tab then instructs. Everything below is
+          measurement of it. */}
+      <StrategyPicker />
+
       <SystemRun />
 
       <SystemRecord />

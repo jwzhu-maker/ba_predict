@@ -1,5 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { CURRENCIES, STORAGE_KEY, createInitialState } from "@ba-predict/app-core";
+import { CURRENCIES } from "@ba-predict/app-core";
 import {
   BET_TYPES,
   PROGRESSIONS,
@@ -8,7 +7,7 @@ import {
   type ProgressionId,
 } from "@ba-predict/engine";
 import { Linking, View } from "react-native";
-import { Btn, Card, Hint, Notice, NumberInput, Picker, Prose, Row, SwitchRow } from "../components/ui";
+import { Btn, Card, Hint, Notice, NumberInput, Picker, Prose, SwitchRow } from "../components/ui";
 import { useAppState, useDispatch } from "../state/store";
 
 export default function SettingsScreen() {
@@ -186,36 +185,15 @@ export default function SettingsScreen() {
         />
       </Card>
 
-      <Card title="Start over" subtitle="Ending a session files it under History">
-        <Row>
-          <Btn label="New shoe" onPress={() => dispatch({ type: "new-shoe" })} />
-          <Btn
-            label="End session"
-            variant="primary"
-            onPress={() => dispatch({ type: "end-session" })}
-          />
-          <Btn label="Reset stake" onPress={() => dispatch({ type: "reset-session" })} />
-        </Row>
-        <Hint>
-          End session banks the night and carries your current balance into a new one. Reset
-          stake also files it, but puts the original starting bankroll back — for when you were
-          experimenting rather than playing.
-        </Hint>
-        <Btn
-          label="Erase everything"
-          variant="danger"
-          onPress={() => {
-            void AsyncStorage.removeItem(STORAGE_KEY).catch(() => undefined);
-            dispatch({ type: "hydrate", state: createInitialState() });
-          }}
-        />
-        <Hint>
+      <Card title="What this app can and cannot do">
+        {/* "Start over" used to sit above this, and now opens the History
+            tab, where both of its buttons file the session. The privacy
+            line it carried stays here, which is where a statement about
+            where your data lives belongs. */}
+        <Prose>
           Everything is stored on this device only. There is no account and no server — nothing
           you record here leaves your phone.
-        </Hint>
-      </Card>
-
-      <Card title="What this app can and cannot do">
+        </Prose>
         <Prose>
           It computes the exact odds of the next coup from the cards still in the shoe, prices
           every bet on the layout against your table's rules, and sizes a stake from your own

@@ -4,6 +4,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View, useColorScheme } from "r
 // takes `edges`, and the bottom edge is handled by the tab bar's own padding.
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Screen } from "@ba-predict/app-core";
+import BankrollHeader from "./src/components/BankrollHeader";
+import RecordDock from "./src/components/RecordDock";
 import HistoryScreen from "./src/screens/HistoryScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import SimulatorScreen from "./src/screens/SimulatorScreen";
@@ -28,6 +30,12 @@ function Shell() {
   const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: p.bg },
     header: {
+      // A row now, so the money can sit on the right. The header is already
+      // outside the ScrollView, which is what pins it.
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: 12,
       paddingHorizontal: 16,
       paddingTop: 10,
       paddingBottom: 10,
@@ -45,7 +53,13 @@ function Shell() {
       paddingTop: 6,
       paddingBottom: Math.max(insets.bottom, 6),
     },
-    tab: { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 10, gap: 2 },
+    tab: {
+      flex: 1,
+      alignItems: "center",
+      paddingVertical: 8,
+      borderRadius: 10,
+      gap: 2,
+    },
     tabActive: { backgroundColor: `${p.accent}1f` },
     tabGlyph: { fontSize: 16 },
     tabLabel: { fontSize: 11, fontWeight: "600" },
@@ -55,8 +69,16 @@ function Shell() {
     <SafeAreaView style={styles.root} edges={["top", "left", "right"]}>
       <StatusBar style={scheme === "light" ? "dark" : "light"} />
       <View style={styles.header}>
-        <Text style={styles.title}>ba_predict</Text>
-        <Text style={styles.tagline}>Baccarat odds, honestly</Text>
+        <View style={{ flexShrink: 1, minWidth: 0 }}>
+          <Text style={styles.title} numberOfLines={1}>
+            ba_predict
+          </Text>
+          <Text style={styles.tagline} numberOfLines={1}>
+            Baccarat odds, honestly
+          </Text>
+        </View>
+        {/* The figures are why this bar is pinned, so they never shrink. */}
+        <BankrollHeader />
       </View>
 
       <ScrollView
@@ -69,6 +91,14 @@ function Shell() {
         {screen === "history" ? <HistoryScreen /> : null}
         {screen === "settings" ? <SettingsScreen /> : null}
       </ScrollView>
+
+      {/*
+        Pinned above the tab bar, outside the ScrollView, on the Table tab
+        only. P / B / T is pressed once per coup and is the one control that
+        must never move — see `RecordDock` for why this is docked rather
+        than reserved for.
+      */}
+      {screen === "table" ? <RecordDock /> : null}
 
       <View style={styles.tabbar}>
         {TABS.map((tab) => {

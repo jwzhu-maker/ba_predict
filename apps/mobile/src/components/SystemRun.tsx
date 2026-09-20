@@ -1,39 +1,46 @@
 import { Text, View } from "react-native";
-import { bettableHands, oddsOfReachingTopStep } from "@ba-predict/app-core";
+import {
+  bettableHands,
+  describeSystemRules,
+  expectedBetsPerGroup,
+  oddsOfReachingTopStep,
+  oddsOfTopStepPerHand,
+} from "@ba-predict/app-core";
 import { formatPercent } from "../lib/format";
-import { useMoney, useSystemRun } from "../state/store";
+import { useAppState, useMoney, useSystemRun } from "../state/store";
 import { usePalette } from "../theme";
 import { Card, Hint, Notice, Prose, Row, Stat, useStyles } from "./ui";
 
 /**
- * Reverse 12 played over the shoe on screen, group by group.
+ * The selected system played over the shoe on screen, group by group.
  *
  * The "calculate the gain/loss once the game finishes" half. Hindsight on the
  * hands that really came out, so it is measurement, not a forecast.
  *
  * The group rows are the part worth reading: the headline is one shoe's luck,
- * the groups show the shape that repeats — most stop after a bet or two, and
- * the rare clean run is where the money is.
+ * the groups show the shape that repeats — and the two systems have very
+ * different shapes, which is why the copy is read off `run.config` rather
+ * than written out.
  */
 export default function SystemRun() {
   const { run, finished } = useSystemRun();
+  const { activeSystem } = useAppState();
   const money = useMoney();
   const p = usePalette();
   const s = useStyles(p);
 
   const possible = bettableHands(run);
+  const gated = run.config.groupsGateBetting;
+  // Compared by id, not by `activeSystem === null`: the run falls back to
+  // the default for an unselected OR unrecognised id, and either way this
+  // card is then showing what that system WOULD have done rather than what
+  // was played.
+  const preview = run.id === activeSystem ? "" : " · not selected, shown for comparison";
 
   if (run.handsAvailable === 0) {
     return (
-      <Card title="Reverse 12" subtitle="Runs as you record results">
-        <Prose>
-          Your own rule: watch {run.config.lookback} hands, then from hand {run.config.lookback + 1}{" "}
-          back the opposite of the hand {run.config.lookback} before it. Groups of{" "}
-          {run.config.groupSize}, opening at {money.format(run.config.baseStake)} and adding{" "}
-          {money.format(run.config.stakeStep)} after each win, stopping the group on its first
-          loss and the shoe after hand {run.config.lastHand}. Ties are deleted before any of that
-          is counted.
-        </Prose>
+      <Card title={run.name} subtitle={`Runs as you record results${preview}`}>
+        <Prose>{describeSystemRules(run.config, money)}</Prose>
       </Card>
     );
   }
@@ -41,7 +48,7 @@ export default function SystemRun() {
   if (run.bets === 0) {
     const left = run.config.lookback + 1 - run.handsAvailable;
     return (
-      <Card title="Reverse 12" subtitle={`${run.handsAvailable} hands, still watching`}>
+      <Card title={run.name} subtitle={`${run.handsAvailable} hands, still watching${preview}`}>
         <Prose>
           No bets yet — the rule watches the first {run.config.lookback} hands.
           {left > 0 ? ` ${left} more to go.` : ""}
@@ -54,8 +61,8 @@ export default function SystemRun() {
 
   return (
     <Card
-      title={finished ? "Reverse 12, last shoe" : "Reverse 12, this shoe"}
-      subtitle={`${run.handsAvailable} hands after ties${run.incomplete ? ", shoe ended early" : ""}`}
+      title={finished ? `${run.name}, last shoe` : `${run.name}, this shoe`}
+      subtitle={`${run.handsAvailable} hands after ties${run.incomplete ? ", shoe ended early" : ""}${preview}`}
     >
       <View style={{ flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", gap: 10 }}>
         <Text style={s.fieldLabel}>{ahead ? "AHEAD BY" : "DOWN BY"}</Text>
@@ -68,7 +75,7 @@ export default function SystemRun() {
         <Stat
           label="Bets placed"
           value={`${run.bets} of ${possible}`}
-          hint="A group stops at its first loss"
+          hint={gated ? "A group stops at its first loss" : "Every hand in the range"}
         />
         <Stat label="Won" value={`${run.wins} (${formatPercent(run.wins / run.bets, 0)})`} />
         <Stat label="Staked" value={money.format(run.staked)} />
@@ -148,9 +155,10 @@ export default function SystemRun() {
 
       <Hint>
         One shoe of hindsight, on the hands that actually came out. What repeats is the shape, not
-        the total: a group stops at its first loss, so it lands about two bets on average rather
-        than {run.config.groupSize}, and the top of the ladder is reached roughly once in{" "}
-        {oddsOfReachingTopStep(run.config.groupSize)} groups.
+        the total:{" "}
+        {gated
+          ? `a group stops at its first loss, so it lands about ${expectedBetsPerGroup(run.config).toFixed(1)} bets on average rather than ${run.config.groupSize}, and the top of the ladder is reached roughly once in ${oddsOfReachingTopStep(run.config.maxLadderSteps)} groups.`
+          : `every hand in the range is staked and the ladder resets on the first loss, so the top step comes up on roughly one hand in ${oddsOfTopStepPerHand(run.config.maxLadderSteps)} and the run is many small swings rather than a few big ones.`}
       </Hint>
     </Card>
   );

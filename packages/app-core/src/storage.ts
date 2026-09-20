@@ -1,3 +1,4 @@
+import { BETTING_SYSTEMS } from "@ba-predict/engine";
 import { isArchivedSession, parseEvictedTotals } from "./archive";
 import { isArchivedShoe } from "./shoe-archive";
 import { createInitialState, type AppState } from "./reducer";
@@ -45,6 +46,20 @@ export function deserializeState(raw: string | null | undefined): AppState {
         ? parsed.shoeArchive.filter(isArchivedShoe)
         : [],
       currency: typeof parsed.currency === "string" ? parsed.currency : initial.currency,
+      // The chosen system survives a relaunch — it is a decision about the
+      // sitting, not about the coup. An unknown id (an older or newer build)
+      // falls back to none rather than naming a system that does not exist.
+      activeSystem:
+        parsed.activeSystem != null &&
+        BETTING_SYSTEMS.some((system) => system.id === parsed.activeSystem)
+          ? parsed.activeSystem
+          : null,
+      // Skipping is per coup, so it never outlives the launch that set it.
+      skipNextCoup: false,
+      // Observing is a decision about the sitting, so it does survive.
+      tableMode: parsed.tableMode === "observe" ? "observe" : "play",
+      // How much the app should explain is a preference, so it survives too.
+      adviceReasonsOpen: parsed.adviceReasonsOpen === true,
       // Undo history is deliberately not restored: it is a stack of whole
       // sessions, and "undo across a relaunch" is not a promise worth making.
       history: [],

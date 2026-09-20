@@ -11,8 +11,8 @@ import {
   type Settlement,
   type TableRules,
 } from "@ba-predict/engine";
-import { createShoe } from "@ba-predict/engine";
-import type { BankrollState } from "@ba-predict/engine";
+import { createShoe, type BettingSystemId } from "@ba-predict/engine";
+import type { BankrollState, CoupRecord } from "@ba-predict/engine";
 import {
   ARCHIVE_LIMIT,
   EMPTY_EVICTED,
@@ -22,6 +22,7 @@ import {
   type EvictedTotals,
 } from "./archive";
 import { DEFAULT_CURRENCY } from "./currency";
+import type { TableMode } from "./table-call";
 import { SHOE_ARCHIVE_LIMIT, archiveShoe, type ArchivedShoe } from "./shoe-archive";
 
 export type Screen = "table" | "roads" | "simulator" | "history" | "settings";
@@ -44,6 +45,45 @@ export interface AppState {
   shoeArchive: ArchivedShoe[];
   /** ISO 4217 code, or PLAIN for unlabelled numbers. */
   currency: string;
+  /**
+   * The betting system being played, chosen on the Strategies tab, or null
+   * for none.
+   *
+   * Picking one at the start of the session is the point: it decides the
+   * side, the stake and whether to bet at all, so the Table tab's headline
+   * becomes that system's call rather than the engine's flat suggestion.
+   */
+  activeSystem: BettingSystemId | null;
+  /**
+   * True when the user has pressed "I don't bet this time".
+   *
+   * Per coup, not per session: recording a result clears it, because the
+   * next hand is a new decision. It exists because the app now stakes the
+   * suggestion automatically, so opting OUT is the action that needs a
+   * button rather than opting in.
+   */
+  skipNextCoup: boolean;
+  /**
+   * "observe" keeps score without ever staking.
+   *
+   * It exists because recording a result now moves money by default, and a
+   * player watching a shoe they are not betting would otherwise drain their
+   * bankroll one coup at a time, or have to press the red skip button on
+   * every single hand. The roads, the strategy record and the card tracker
+   * all still fill in — this changes nothing except whether the ledger is
+   * touched.
+   */
+  tableMode: TableMode;
+  /**
+   * Whether the Bet card's "Why this" reasoning is unfolded.
+   *
+   * In app state rather than in each card's own `useState` because a tab
+   * switch unmounts the Table screen: opening it, glancing at the roads and
+   * coming back folded it again, so the control did not hold the setting a
+   * person had just made. It is a preference about how much the app should
+   * explain, not a per-visit detail, so it survives a relaunch too.
+   */
+  adviceReasonsOpen: boolean;
   screen: Screen;
 }
 
@@ -60,6 +100,10 @@ export function createInitialState(): AppState {
     evicted: EMPTY_EVICTED,
     shoeArchive: [],
     currency: DEFAULT_CURRENCY,
+    activeSystem: null,
+    skipNextCoup: false,
+    tableMode: "play",
+    adviceReasonsOpen: false,
     screen: "table",
   };
 }
@@ -70,14 +114,31 @@ export type Action =
   | { type: "remove-card" }
   | { type: "clear-cards" }
   | { type: "place-wager"; wager: PlacedWager | null }
-  | { type: "record-coup"; coup: Omit<CoupInput, "cards">; now?: number }
+  | {
+      type: "record-coup";
+      coup: Omit<CoupInput, "cards">;
+      /**
+       * The wager this result settles against, as the card was showing it.
+       *
+       * The client resolves it (see `resolveTableCall`) so the money that
+       * moves is always the money on screen. A hand-placed `pendingWager`
+       * still wins, which is what an override means.
+       */
+      wager?: PlacedWager | null;
+      now?: number;
+    }
   | { type: "undo" }
   | { type: "new-shoe"; now?: number }
   | { type: "reset-session" }
   | { type: "end-session"; now?: number }
+  | { type: "delete-session"; id: string }
   | { type: "clear-archive" }
   | { type: "clear-shoe-archive" }
   | { type: "set-currency"; currency: string }
+  | { type: "set-active-system"; system: BettingSystemId | null }
+  | { type: "skip-next-coup"; skip: boolean }
+  | { type: "set-table-mode"; mode: TableMode }
+  | { type: "set-advice-reasons-open"; open: boolean }
   | { type: "update-rules"; rules: Partial<TableRules> }
   | { type: "update-bankroll"; bankroll: Partial<BankrollState> }
   | { type: "set-progression"; progression: ProgressionId }
@@ -88,6 +149,65 @@ export type Action =
 function remember(state: AppState): SessionState[] {
   const history = [...state.history, state.session];
   return history.length > HISTORY_LIMIT ? history.slice(history.length - HISTORY_LIMIT) : history;
+}
+
+/** Everything the recorded coups have added to or taken from the bankroll. */
+function settledProfit(coups: readonly CoupRecord[]): number {
+  let total = 0;
+  for (const coup of coups) total += coup.wager?.profit ?? 0;
+  return total;
+}
+
+/**
+ * Undo the last coup without undoing anything the player has changed since.
+ *
+ * The history stack holds whole `SessionState` snapshots, and restoring one
+ * wholesale reverted the SETTINGS too. That is a real trap rather than a
+ * theoretical one, because of when people change them: you hit your
+ * stop-win, raise it in Settings to keep playing, mis-tap the next result —
+ * and Undo silently puts the old stop-win back, so the app starts refusing
+ * to stake again with no indication why. The same went for the table
+ * maximum, the unit size, the rules, the staking plan and the Kelly
+ * fraction.
+ *
+ * So only what an undoable action actually TOUCHES comes from the snapshot:
+ * the cards, the coup list, the shoe markers, the ladder's live position and
+ * the first-wager stamp. Everything else is taken from the session as it
+ * stands now.
+ *
+ * The bankroll BALANCE is the one field that is both. A coup moves it and
+ * the Settings screen can set it outright, so neither side is right on its
+ * own: restoring the snapshot would discard a correction typed in since,
+ * and keeping the current value would leave the undone coup's winnings in
+ * the bankroll. It is reversed by DELTA instead — the profit recorded in
+ * the coups the undo removes — which gives the snapshot's number when
+ * nothing else changed and preserves the correction when it did.
+ *
+ * The delta is computed from the two coup lists rather than from "the last
+ * coup", because `new-shoe` is undoable too and removes no coups at all;
+ * there the two lists agree and the delta is zero.
+ */
+function undoSession(current: SessionState, snapshot: SessionState): SessionState {
+  const undoneProfit = settledProfit(current.coups) - settledProfit(snapshot.coups);
+  return {
+    ...current,
+    shoe: snapshot.shoe,
+    coups: snapshot.coups,
+    shoeStartIndex: snapshot.shoeStartIndex,
+    previousShoeStartIndex: snapshot.previousShoeStartIndex,
+    // The ladder's live position, but only while it is the same ladder.
+    // `progression` carries BOTH the plan the player chose (a setting) and
+    // where that plan currently stands (moved by every settled coup), so
+    // restoring it wholesale put a switched-away-from plan back. Switching
+    // plans resets the ladder anyway, which is why keeping the current one
+    // in that case loses nothing.
+    progression:
+      current.progression.id === snapshot.progression.id
+        ? snapshot.progression
+        : current.progression,
+    firstWagerAt: snapshot.firstWagerAt,
+    bankroll: { ...current.bankroll, bankroll: current.bankroll.bankroll - undoneProfit },
+  };
 }
 
 /**
@@ -114,13 +234,29 @@ function syncProgressionOptions(session: SessionState): SessionState {
  * boundary would hand back the old session while leaving its archived copy in
  * place — and the next close would file it twice.
  */
+/** `id`, or `id#2`, `id#3`… if the archive already holds it. */
+function uniqueArchiveId(archive: readonly ArchivedSession[], id: string): string {
+  if (!archive.some((row) => row.id === id)) return id;
+  for (let suffix = 2; ; suffix += 1) {
+    const candidate = `${id}#${suffix}`;
+    if (!archive.some((row) => row.id === candidate)) return candidate;
+  }
+}
+
 function closeSession(
   state: AppState,
   options: { carryBankroll: boolean; now: number },
 ): AppState {
   const { rules, bankroll, progression, preferredBet, kellyMultiplier } = state.session;
   const archived = archiveSession(state.session, options.now);
-  const appended = archived ? [...state.archive, archived] : state.archive;
+  // `archiveSession` ids a row `${startedAt}-${endedAt}`, which two sittings
+  // closed in the same millisecond share. That was only a duplicate React
+  // key before; now that a row can be deleted BY id, a collision means
+  // deleting one visibly removes another, so the id is made unique here —
+  // where the existing archive is in hand and `archiveSession` cannot see it.
+  const appended = archived
+    ? [...state.archive, { ...archived, id: uniqueArchiveId(state.archive, archived.id) }]
+    : state.archive;
   const opening = options.carryBankroll ? bankroll.bankroll : bankroll.startingBankroll;
 
   // Trim to the cap, folding anything dropped into the running totals rather
@@ -148,6 +284,9 @@ function closeSession(
     history: [],
     cardEntry: [],
     pendingWager: null,
+    // `skipNextCoup` is documented as per-coup; a brand-new session opening
+    // on "SITTING OUT" is the contract being broken at its widest.
+    skipNextCoup: false,
     lastSettlement: null,
     archive,
     evicted,
@@ -195,11 +334,47 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, cardEntry: [] };
 
     case "place-wager":
-      return { ...state, pendingWager: action.wager };
+      // Placing by hand is a decision to bet, so it cancels a skip; taking
+      // the wager back leaves the skip alone.
+      return {
+        ...state,
+        pendingWager: action.wager,
+        skipNextCoup: action.wager ? false : state.skipNextCoup,
+      };
+
+    case "set-active-system":
+      // A fresh system starts from a clean slate: a skip belongs to the coup
+      // it was pressed on, and a hand-placed wager was chosen against the
+      // PREVIOUS system's advice — left in place it silently outranks the
+      // system the user just picked, on the very next coup.
+      return {
+        ...state,
+        activeSystem: action.system,
+        skipNextCoup: false,
+        pendingWager: null,
+      };
+
+    case "set-table-mode":
+      return { ...state, tableMode: action.mode, skipNextCoup: false };
+
+    case "set-advice-reasons-open":
+      return { ...state, adviceReasonsOpen: action.open };
+
+    case "skip-next-coup":
+      return {
+        ...state,
+        skipNextCoup: action.skip,
+        pendingWager: action.skip ? null : state.pendingWager,
+      };
 
     case "record-coup": {
       const coup: CoupInput = { ...action.coup, cards: state.cardEntry };
-      const { session, settlement } = applyCoup(state.session, coup, state.pendingWager);
+      // A hand-placed wager outranks the suggestion; otherwise the suggestion
+      // the card was showing is what settles. `undefined` (an older caller,
+      // or a test) falls back to the pending wager alone, so nothing is
+      // staked that was never asked for.
+      const wager = state.pendingWager ?? action.wager ?? null;
+      const { session, settlement } = applyCoup(state.session, coup, wager);
       // The sitting starts when money first goes down, not when the app
       // launched.
       const firstWagerAt =
@@ -210,6 +385,8 @@ export function reducer(state: AppState, action: Action): AppState {
         session: { ...session, firstWagerAt },
         cardEntry: [],
         pendingWager: null,
+        // The skip was for this coup; the next hand is a new decision.
+        skipNextCoup: false,
         lastSettlement: settlement,
       };
     }
@@ -219,7 +396,8 @@ export function reducer(state: AppState, action: Action): AppState {
       if (!previous) return state;
       return {
         ...state,
-        session: previous,
+        // Not `previous` wholesale: that reverts settings changed since.
+        session: undoSession(state.session, previous),
         history: state.history.slice(0, -1),
         cardEntry: [],
         pendingWager: null,
@@ -244,6 +422,9 @@ export function reducer(state: AppState, action: Action): AppState {
         shoeArchive: fileShoe(state, action.now ?? Date.now()),
         cardEntry: [],
         pendingWager: null,
+        // The skip was for a coup in the shoe that just ended, so it must not
+        // silently sit out the first hand of the new one.
+        skipNextCoup: false,
         lastSettlement: null,
       };
 
@@ -257,6 +438,17 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case "reset-session":
       return closeSession(state, { carryBankroll: false, now: Date.now() });
+
+    case "delete-session": {
+      const archive = state.archive.filter((session) => session.id !== action.id);
+      // Nothing matched: return the same object so React skips the re-render.
+      if (archive.length === state.archive.length) return state;
+      // `evicted` is deliberately untouched. `lifetimeStats` sums the archive
+      // rows and ADDS the evicted totals, so dropping the row already takes
+      // its numbers out of the lifetime figures; subtracting from `evicted`
+      // as well would remove them twice.
+      return { ...state, archive };
+    }
 
     case "clear-archive":
       // Clearing history clears all of it, evicted totals included —

@@ -3,41 +3,71 @@ import { CURRENCIES, PLAIN_CURRENCY, createMoneyFormatter } from "../currency";
 import { describeEdge } from "../edge";
 import { buildSparkline } from "../sparkline";
 
+/**
+ * Every formatter here renders in the RUNTIME's own locale, which is the
+ * point of using Intl at all — so nothing below may pin an English glyph.
+ *
+ * `1,000.00` is `1'000.00` under de-CH and `1.000,00` under de-DE, and USD
+ * is `$`, `US$` or `USD` depending on where the device is. A test that pins
+ * one of those passes on the machine it was written on and fails on a real
+ * user's phone, which is exactly what happened.
+ */
+const localeNumber = new Intl.NumberFormat(undefined, {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 describe("money formatting", () => {
   it("shows a bare number when no currency is chosen", () => {
+    // Two decimals and no currency mark, in whatever the local convention
+    // for grouping and decimals happens to be.
     const money = createMoneyFormatter(PLAIN_CURRENCY);
-    expect(money.format(1000)).toBe("1,000.00");
-    expect(money.format(0.5)).toBe("0.50");
+    expect(money.format(1000)).toBe(localeNumber.format(1000));
+    expect(money.format(0.5)).toBe(localeNumber.format(0.5));
+    // No letters and no currency symbol. Spelling that as an ASCII digit
+    // class instead fails under ar-EG, whose digits are ١٢٣ — and `\d` in a
+    // JS regex is ASCII only.
+    expect(money.format(1000)).not.toMatch(/\p{L}|\p{Sc}/u);
   });
 
   it("labels a real currency", () => {
     const usd = createMoneyFormatter("USD");
-    expect(usd.format(1000)).toMatch(/\$/);
-    expect(usd.format(1000)).toMatch(/1,000/);
+    // Some mark, and the number still in it. Which mark is the locale's
+    // business — "$" in en-US, "US$" in en-GB, "USD" in ms-MY.
+    expect(usd.format(1000)).toMatch(/\$|USD/);
+    expect(usd.format(1000)).toContain(localeNumber.format(1000));
   });
 
   it("respects a currency's own decimal convention", () => {
-    // Yen has no minor unit; forcing two decimals would be wrong.
+    // Yen has no minor unit; forcing two decimals would be wrong. Looking
+    // for ".00" reads de-DE's GROUPING dot in "1.000 ¥" as a decimal one,
+    // so the property is tested directly: a currency with no minor unit
+    // renders 1000 and 1000.40 identically, and one with a minor unit does
+    // not.
     const jpy = createMoneyFormatter("JPY");
-    expect(jpy.format(1000)).not.toMatch(/\.00/);
+    expect(jpy.format(1000)).toBe(jpy.format(1000.4));
+    const usd = createMoneyFormatter("USD");
+    expect(usd.format(1000)).not.toBe(usd.format(1000.4));
   });
 
   it("signs a gain and a loss explicitly", () => {
+    // The sign is ours — a real minus, not a hyphen — and is prepended to
+    // the locale's own rendering rather than replacing it.
     const money = createMoneyFormatter(PLAIN_CURRENCY);
-    expect(money.signed(10)).toBe("+10.00");
-    expect(money.signed(-10)).toBe("−10.00");
-    expect(money.signed(0)).toBe("0.00");
+    expect(money.signed(10)).toBe(`+${localeNumber.format(10)}`);
+    expect(money.signed(-10)).toBe(`−${localeNumber.format(10)}`);
+    expect(money.signed(0)).toBe(localeNumber.format(0));
   });
 
   it("offers an unlabelled rendering for tight columns", () => {
     const myr = createMoneyFormatter("MYR");
-    expect(myr.plain(1234.5)).toBe("1,234.50");
-    expect(myr.plain(1234.5)).not.toMatch(/RM/);
+    expect(myr.plain(1234.5)).toBe(localeNumber.format(1234.5));
+    expect(myr.plain(1234.5)).not.toMatch(/RM|MYR/);
   });
 
   it("falls back to a plain number rather than throwing on a bad code", () => {
     const bogus = createMoneyFormatter("NOTACURRENCY");
-    expect(bogus.format(12)).toBe("12.00");
+    expect(bogus.format(12)).toBe(localeNumber.format(12));
   });
 
   it("returns the same formatter for the same code", () => {
@@ -96,11 +126,29 @@ describe("sparkline geometry", () => {
 });
 
 describe("telling the dollars apart", () => {
-  /** The currency mark a formatted amount carries, with digits stripped out. */
+  /**
+   * The currency mark a formatted amount carries, with the number removed.
+   *
+   * Everything that is not part of a mark goes: digits in any numbering
+   * system, spaces of every width, the directionality marks ar-EG inserts,
+   * and punctuation (de-CH groups thousands with an apostrophe). What is
+   * left is letters and currency symbols, which is exactly what a mark is
+   * made of — "$", "US$", "RM", "NT$".
+   */
   const markOf = (code: string) =>
     createMoneyFormatter(code)
       .format(1000)
-      .replace(/[\d\s .,]/g, "");
+      .replace(/[\p{N}\p{Zs}\p{Cf}\p{P}\s]/gu, "");
+
+  /** What this runtime's own ICU renders for a code, in one display form. */
+  const intlMark = (code: string, display: "narrowSymbol" | "symbol") =>
+    new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: code,
+      currencyDisplay: display,
+    })
+      .formatToParts(0)
+      .find((part) => part.type === "currency")?.value ?? "";
 
   it("gives every offered currency a distinct mark", () => {
     // `narrowSymbol` alone renders USD, SGD, HKD, TWD and AUD all as a bare
@@ -118,10 +166,32 @@ describe("telling the dollars apart", () => {
   });
 
   it("keeps the friendlier narrow mark where nothing collides with it", () => {
-    // MYR is not ambiguous, so it should not be downgraded to its code.
-    expect(markOf("MYR")).toBe("RM");
-    expect(markOf("GBP")).toBe("£");
-    expect(markOf("USD")).toBe("$");
+    // The rule, not one machine's glyphs. Pinning `markOf("USD")` to "$"
+    // passed under en-US, where USD's narrow and wide marks are the same
+    // string, and failed under en-GB, where the wide one is "US$" — and
+    // "US$" is the RIGHT answer there: USD shares its narrow "$" with SGD,
+    // HKD, TWD and AUD, which is the whole reason the fallback exists.
+    //
+    // So: a currency whose narrow mark is unique among the ones on offer
+    // must keep it, and never be downgraded to the wider form.
+    const narrowCounts = new Map<string, number>();
+    for (const option of CURRENCIES) {
+      if (option.code === PLAIN_CURRENCY) continue;
+      const narrow = intlMark(option.code, "narrowSymbol");
+      narrowCounts.set(narrow, (narrowCounts.get(narrow) ?? 0) + 1);
+    }
+
+    let unique = 0;
+    for (const option of CURRENCIES) {
+      if (option.code === PLAIN_CURRENCY) continue;
+      const narrow = intlMark(option.code, "narrowSymbol");
+      if (narrowCounts.get(narrow) !== 1) continue;
+      unique += 1;
+      expect(markOf(option.code), `${option.code} was downgraded needlessly`).toBe(narrow);
+    }
+    // MYR's "RM" and GBP's "£" collide with nothing in any locale, so this
+    // loop is never vacuous however the runtime renders the dollars.
+    expect(unique).toBeGreaterThanOrEqual(2);
   });
 
   it("still formats an amount for every currency", () => {
@@ -129,7 +199,18 @@ describe("telling the dollars apart", () => {
       // Not pinned to "1,234": a zero-decimal currency like JPY correctly
       // rounds 1234.5 to 1,235, which is the point of using Intl at all.
       const formatted = createMoneyFormatter(option.code).format(1234.5);
-      expect(formatted, option.code).toMatch(/1[,. \s]?23[45]/);
+      // Either the locale's own two-decimal rendering, or its zero-decimal
+      // one for a currency with no minor unit. Matching "1,234" directly
+      // assumes an ASCII-digit, comma-grouping locale; de-CH groups with an
+      // apostrophe and ar-EG does not use ASCII digits at all.
+      const withMinor = localeNumber.format(1234.5);
+      const withoutMinor = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(
+        1234.5,
+      );
+      expect(
+        formatted.includes(withMinor) || formatted.includes(withoutMinor),
+        `${option.code} rendered ${formatted}`,
+      ).toBe(true);
     }
   });
 });

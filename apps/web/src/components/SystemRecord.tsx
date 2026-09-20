@@ -1,9 +1,9 @@
 import { Card, Notice, Stat } from "./Primitives";
 import { formatPercent } from "../lib/format";
-import { useMoney, useSystemRecord } from "../state/store";
+import { useAppState, useMoney, useSystemRecord } from "../state/store";
 
 /**
- * Reverse 12 across every shoe this device has kept.
+ * The selected system across every shoe this device has kept.
  *
  * The single-shoe card answers "what did it make me tonight". This answers
  * "does it work", which is the question worth asking and needs a lot more
@@ -11,20 +11,34 @@ import { useMoney, useSystemRecord } from "../state/store";
  *
  * The two numbers to read against each other are the same pair the staking
  * plans get: how often a shoe finishes ahead, and what the action costs per
- * unit staked. This rule stakes on roughly a third of the hands a flat bettor
- * would, so it loses less MONEY per shoe — and exactly the same RATE, because
- * when you bet has never changed what a bet costs.
+ * unit staked. Those two move in opposite directions between the systems on
+ * offer and the rate does not move at all, which is the whole lesson.
+ *
+ * Every kept shoe is replayed under whichever system is selected NOW, not
+ * under whatever was selected while it was dealt — the archive holds coups,
+ * not stakes. That is what makes switching systems here a fair comparison
+ * rather than a mixture of two records.
  */
 export default function SystemRecord() {
   const record = useSystemRecord();
+  const { activeSystem } = useAppState();
   const money = useMoney();
+
+  // The same marker SystemRun carries directly above: with nothing
+  // selected this is the default system's record, and a shoes-ahead
+  // figure attributed to a rule the player declined is worse than no
+  // figure at all.
+  const preview = record.id === activeSystem ? "" : " · not selected, shown for comparison";
 
   if (record.shoesWithBets === 0) {
     return (
-      <Card title="Reverse 12 record" subtitle="Builds up as you finish shoes">
+      <Card
+        title={`${record.name} record`}
+        subtitle={`Builds up as you finish shoes${preview}`}
+      >
         <p className="prose">
-          Every shoe you finish gets replayed through your rule. After a few dozen this shows how
-          often it finishes a shoe ahead, and what it costs per unit staked.
+          Every shoe you finish gets replayed through {record.name}. After a few dozen this shows
+          how often it finishes a shoe ahead, and what it costs per unit staked.
         </p>
       </Card>
     );
@@ -35,8 +49,8 @@ export default function SystemRecord() {
 
   return (
     <Card
-      title="Reverse 12 record"
-      subtitle={`${record.shoesWithBets} shoe${record.shoesWithBets === 1 ? "" : "s"} played, ${record.bets} bets`}
+      title={`${record.name} record`}
+      subtitle={`${record.shoesWithBets} shoe${record.shoesWithBets === 1 ? "" : "s"} played, ${record.bets} bets${preview}`}
     >
       <div className="system-result">
         <span className="field-label">{ahead ? "Ahead by" : "Down by"}</span>
@@ -96,11 +110,11 @@ export default function SystemRecord() {
       ) : null}
 
       <p className="field-hint">
-        Read <strong>Shoes ahead</strong> against <strong>Per unit</strong>. The rule wins a
-        minority of shoes and loses small on most of them, then occasionally runs a group clean
-        and wins big &mdash; the mirror image of a Martingale, which wins nearly every shoe and
-        loses everything on one. Per unit staked the two cost the same, because sitting out hands
-        changes how much you bet, never what a bet costs.
+        Read <strong>Shoes ahead</strong> against <strong>Per unit</strong>. Switch the system
+        above and both of the first two numbers will move &mdash; a rule that sits out most hands
+        wins fewer shoes by more, one that backs every hand wins more shoes by less. The third
+        will not: per unit staked they cost the same, because when and how much you bet has never
+        changed what a bet costs.
       </p>
     </Card>
   );

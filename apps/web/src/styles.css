@@ -126,9 +126,21 @@ select {
 
 /* ---------- tab bar ---------- */
 
-.tabbar {
+/*
+ * Everything pinned to the bottom of the screen, in one sticky block.
+ *
+ * Two siblings both stuck to `bottom: 0` land on top of each other, so the
+ * Record buttons and the tab bar share one sticky container and stack inside
+ * it. The tab bar keeps its own border and padding and is otherwise static.
+ */
+.app-dock {
   position: sticky;
   bottom: 0;
+  z-index: 5;
+  background: var(--bg);
+}
+
+.tabbar {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 2px;
@@ -137,7 +149,58 @@ select {
      a blurred-but-readable backdrop made the rows behind it look overlapped. */
   background: var(--bg);
   border-top: 1px solid var(--border);
-  z-index: 5;
+}
+
+/*
+ * The one control used on every single hand, so it never moves and never
+ * needs scrolling to. See `RecordDock` for why this is docked rather than
+ * bounded by a reserved height.
+ *
+ * `.outcome-row` is LAST, so the card-count row a Big or Small wager adds
+ * grows this block upward and the tap targets stay put.
+ */
+.record-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 16px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.record-dock-line {
+  margin: 0;
+  font-size: 0.74rem;
+  font-weight: 560;
+  color: var(--muted);
+}
+
+.record-dock-mods {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.record-dock-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.chip-small {
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  min-height: 0;
+}
+
+/* Shorter than the in-card version was: the dock is competing with the
+   content for the screen, and a 78px-tall button is more than a thumb
+   needs. */
+.record-dock .outcome {
+  min-height: 56px;
+  padding: 8px 6px;
 }
 
 .tab {
@@ -401,14 +464,27 @@ select {
   gap: 6px;
 }
 
+/*
+ * Four percentage buttons plus the amount is five items in one row, and
+ * "−50%" is wider than the "−5u" it replaced — at 360px the row ran 7px past
+ * the viewport and gave the whole Table tab a horizontal scroll.
+ *
+ * So the buttons may shrink (`flex: 0 1 auto`, `min-width: 0`) and the
+ * amount, which is the thing being read, keeps a floor rather than being
+ * squeezed to nothing.
+ */
 .stepper .button {
-  flex: 0 0 auto;
-  padding: 10px 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 10px 6px;
+  font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .stepper-value {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 4.5em;
   text-align: center;
   font-size: 1.15rem;
   font-weight: 680;
@@ -1130,4 +1206,225 @@ select {
   letter-spacing: 0.02em;
   color: var(--muted);
   white-space: nowrap;
+}
+
+/*
+ * The Bet card's two supporting lines.
+ *
+ * `advice-detail` carries the active system's reasoning (which hand is being
+ * mirrored, which step of the ladder) or the reason nothing is being staked.
+ * `advice-settle` states what recording a result will actually do with your
+ * money — load-bearing now that the stake is opt-OUT rather than a tap: the
+ * card is the last thing between the suggestion and the ledger.
+ */
+.advice-detail {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.advice-settle {
+  margin: 10px 0 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+/* ---------- money in the sticky header ---------- */
+
+/*
+ * The header was already `position: sticky`; what scrolled away was the
+ * bankroll CARD below it. Putting the two figures up here is what makes them
+ * survive a scroll to the roads or the odds table.
+ *
+ * `flex: none` on the money and `min-width: 0` on the title means the title
+ * gives way first — the numbers are the reason this bar is pinned, so they
+ * are the last thing allowed to shrink.
+ */
+.app-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.app-title {
+  min-width: 0;
+}
+
+.header-money {
+  display: flex;
+  gap: 14px;
+  flex: none;
+}
+
+.header-money-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.header-money-label {
+  font-size: 0.58rem;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.header-money-value {
+  font-size: 0.98rem;
+  font-weight: 750;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/*
+ * The tagline is the only decorative thing in the bar, so it is what goes
+ * when a small phone plus a long currency ("−RM 2,100.00") runs out of room.
+ */
+@media (max-width: 400px) {
+  .app-title p {
+    display: none;
+  }
+}
+
+.bankroll-meta-top {
+  margin: 0 0 6px;
+}
+
+/*
+ * Player / Tie / Banker get their own row, in the order they sit on the
+ * felt, and the two real bets get the tap target their use deserves — Tie is
+ * a 14.4% house edge and does not need to be as easy to hit as Banker's
+ * 1.06%.
+ */
+.chip-row-primary {
+  gap: 8px;
+}
+
+.chip-large {
+  flex: 1;
+  min-width: 0;
+  justify-content: center;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+/*
+ * The stake being edited gets its own line.
+ *
+ * Four percentage buttons plus the amount in one row left the number — the
+ * thing you are actually reading — squeezed between two pairs of controls.
+ */
+.stake-amount {
+  display: block;
+  text-align: center;
+  font-size: 1.7rem;
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 0;
+}
+
+.stake-steps {
+  display: flex;
+  gap: 6px;
+}
+
+.stake-steps .button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 10px 4px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------- deleting a session ---------- */
+
+/*
+ * The X sits inside the row it deletes, a thumb's width from the figures
+ * you were reading, and a delete here cannot be undone — so the first tap
+ * only arms it and the row asks.
+ */
+.session-delete {
+  appearance: none;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--muted);
+  font-size: 1.15rem;
+  line-height: 1;
+  padding: 2px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-left: 4px;
+}
+
+.session-delete:hover,
+.session-delete:focus-visible {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+
+.session-confirm {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 4px;
+}
+
+.button-tiny {
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  min-height: 0;
+}
+
+/* ---------- a stable Table tab ---------- */
+
+/*
+ * The Record buttons used to be reserved for rather than docked.
+ *
+ * `.advice`, `.card-system-says` and the bankroll bar each carried a
+ * measured `min-height` so that P and B could not move as the cards above
+ * them changed size coup to coup. It worked, and it was the wrong shape of
+ * fix: three rounds each found another state nobody had driven — a tie
+ * appearing, the reasoning unfolded, a table maximum below the ladder's ask
+ * — and the floors that finally covered them all reserved ~670px of
+ * whitespace and put the buttons a screen and a half down the page.
+ *
+ * `.record-dock` above makes the question moot. Nothing that happens in
+ * these cards can move a control that is pinned to the viewport, so they
+ * are free to be exactly as tall as their content, and a card gaining a row
+ * later needs no re-measuring.
+ */
+
+
+/*
+ * "Why this" folds the engine's reasoning away. The lines do not change
+ * hand to hand, and open they cost this card ~130px of reserved height on
+ * the screen where reaching the Record buttons matters most.
+ */
+.advice-why {
+  margin-top: 10px;
+}
+
+.advice-why > summary {
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 4px 0;
+  list-style-position: inside;
+}
+
+.advice-why > summary:hover {
+  color: var(--text);
+}
+
+.advice-why .advice-reasons {
+  margin-top: 4px;
 }

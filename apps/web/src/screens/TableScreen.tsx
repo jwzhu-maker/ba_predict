@@ -21,8 +21,8 @@ export default function TableScreen() {
     <div className="screen">
       <BankrollBar />
       <AdviceCard />
-      <CoupEntry />
       <SystemNextBet />
+      <CoupEntry />
       <ShoeRoads />
       <WagerControls />
       <OddsTable />

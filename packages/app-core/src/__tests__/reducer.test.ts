@@ -1,3 +1,5 @@
+import { lifetimeStats } from "../archive";
+import type { PlacedWager } from "@ba-predict/engine";
 import { createShoe, cardsRemaining } from "@ba-predict/engine";
 import { describe, expect, it } from "vitest";
 import { createInitialState, reducer, type AppState } from "../reducer";
@@ -185,5 +187,351 @@ describe("remembering the shoe that just ended", () => {
     );
     expect(state.session.previousShoeStartIndex).toBe(0);
     expect(state.session.shoeStartIndex).toBe(1);
+  });
+});
+
+describe("betting the suggestion by default", () => {
+  /**
+   * The stake is now opt-OUT: recording a result settles against whatever the
+   * Bet card was showing. That moves real money on every coup, so the rules
+   * about WHEN it does not are the ones worth pinning.
+   */
+  const record = (state: AppState, wager: PlacedWager | null) =>
+    reducer(state, {
+      type: "record-coup",
+      wager,
+      coup: { outcome: "banker", playerPair: false, bankerPair: false },
+    });
+
+  it("settles the wager the card was showing", () => {
+    const before = createInitialState();
+    const after = record(before, { bet: "banker", amount: 100 });
+    expect(after.session.coups.at(-1)!.wager).toMatchObject({ bet: "banker", amount: 100 });
+    expect(after.session.bankroll.bankroll).toBeGreaterThan(before.session.bankroll.bankroll);
+  });
+
+  it("settles nothing when the card was showing no bet", () => {
+    const before = createInitialState();
+    const after = record(before, null);
+    expect(after.session.coups.at(-1)!.wager).toBeUndefined();
+    expect(after.session.bankroll.bankroll).toBe(before.session.bankroll.bankroll);
+  });
+
+  it("prefers a hand-placed wager over the suggestion", () => {
+    let state = createInitialState();
+    state = reducer(state, { type: "place-wager", wager: { bet: "player", amount: 40 } });
+    const after = record(state, { bet: "banker", amount: 100 });
+    expect(after.session.coups.at(-1)!.wager).toMatchObject({ bet: "player", amount: 40 });
+  });
+
+  it("stakes nothing at all for an older caller that passes no wager", () => {
+    // `wager` is optional, so a caller that never learned about it must not
+    // silently start staking the suggestion.
+    const before = createInitialState();
+    const after = reducer(before, {
+      type: "record-coup",
+      coup: { outcome: "banker", playerPair: false, bankerPair: false },
+    });
+    expect(after.session.coups.at(-1)!.wager).toBeUndefined();
+    expect(after.session.bankroll.bankroll).toBe(before.session.bankroll.bankroll);
+  });
+
+  it("clears the skip after the coup it was pressed for", () => {
+    let state = createInitialState();
+    state = reducer(state, { type: "skip-next-coup", skip: true });
+    expect(state.skipNextCoup).toBe(true);
+    state = record(state, null);
+    expect(state.skipNextCoup).toBe(false);
+  });
+
+  it("skipping drops a wager already on the table", () => {
+    let state = createInitialState();
+    state = reducer(state, { type: "place-wager", wager: { bet: "player", amount: 40 } });
+    state = reducer(state, { type: "skip-next-coup", skip: true });
+    expect(state.pendingWager).toBeNull();
+  });
+
+  it("placing by hand cancels a skip, taking it back does not", () => {
+    let state = createInitialState();
+    state = reducer(state, { type: "skip-next-coup", skip: true });
+    state = reducer(state, { type: "place-wager", wager: { bet: "tie", amount: 10 } });
+    expect(state.skipNextCoup).toBe(false);
+
+    state = reducer(state, { type: "skip-next-coup", skip: true });
+    state = reducer(state, { type: "place-wager", wager: null });
+    expect(state.skipNextCoup).toBe(true);
+  });
+
+  it("choosing a system clears a skip left over from the previous one", () => {
+    let state = createInitialState();
+    expect(state.activeSystem).toBeNull();
+    state = reducer(state, { type: "skip-next-coup", skip: true });
+    state = reducer(state, { type: "set-active-system", system: "reverse-12" });
+    expect(state.activeSystem).toBe("reverse-12");
+    expect(state.skipNextCoup).toBe(false);
+    state = reducer(state, { type: "set-active-system", system: null });
+    expect(state.activeSystem).toBeNull();
+  });
+});
+
+describe("the skip and the system choice are per coup, not forever", () => {
+  /**
+   * `skipNextCoup` is documented as per-coup. Every transition that ends the
+   * coup it was pressed on has to clear it, or a fresh shoe — or a brand-new
+   * session — silently opens on "SITTING OUT".
+   */
+  const skipped = () => reducer(createInitialState(), { type: "skip-next-coup", skip: true });
+
+  it("clears the skip on a new shoe", () => {
+    expect(reducer(skipped(), { type: "new-shoe", now: 1 }).skipNextCoup).toBe(false);
+  });
+
+  it("clears the skip when a session ends or resets", () => {
+    expect(reducer(skipped(), { type: "end-session", now: 1 }).skipNextCoup).toBe(false);
+    expect(reducer(skipped(), { type: "reset-session" }).skipNextCoup).toBe(false);
+  });
+
+  it("drops a stale hand-placed wager when the system changes", () => {
+    // Otherwise it outranks the system the user just chose, on the very next
+    // coup, and they never see that system's first call.
+    let state = createInitialState();
+    state = reducer(state, { type: "place-wager", wager: { bet: "player", amount: 40 } });
+    state = reducer(state, { type: "set-active-system", system: "reverse-12" });
+    expect(state.pendingWager).toBeNull();
+    expect(state.activeSystem).toBe("reverse-12");
+  });
+
+  it("carries observe mode across a relaunch but never the skip", () => {
+    let state = reducer(createInitialState(), { type: "set-table-mode", mode: "observe" });
+    state = reducer(state, { type: "skip-next-coup", skip: true });
+    const restored = deserializeState(serializeState(state));
+    expect(restored.tableMode).toBe("observe");
+    expect(restored.skipNextCoup).toBe(false);
+  });
+
+  it("defaults to playing, and falls back to playing on a junk value", () => {
+    expect(createInitialState().tableMode).toBe("play");
+    expect(deserializeState('{"session":null}').tableMode).toBe("play");
+    const state = { ...createInitialState(), tableMode: "nonsense" } as unknown as AppState;
+    expect(deserializeState(serializeState(state)).tableMode).toBe("play");
+  });
+});
+
+describe("deleting one archived session", () => {
+  /** Close two sessions so there is an archive to delete from. */
+  function withTwoSessions(): AppState {
+    let state = createInitialState();
+    let clock = 1_000_000;
+    for (const bet of ["banker", "player"] as const) {
+      state = reducer(state, { type: "place-wager", wager: { bet, amount: 20 } });
+      state = reducer(state, {
+        type: "record-coup",
+        now: (clock += 1000),
+        coup: { outcome: "banker", playerPair: false, bankerPair: false },
+      });
+      state = reducer(state, { type: "end-session", now: (clock += 1000) });
+    }
+    return state;
+  }
+
+  it("never files two sessions under the same id", () => {
+    // The id is `${startedAt}-${endedAt}`, so two sittings closed in the
+    // same millisecond used to collide — harmless as a React key, but now
+    // a delete BY id would take both rows.
+    let state = createInitialState();
+    for (let i = 0; i < 3; i += 1) {
+      state = reducer(state, { type: "place-wager", wager: { bet: "banker", amount: 20 } });
+      state = reducer(state, {
+        type: "record-coup",
+        now: 5_000,
+        coup: { outcome: "banker", playerPair: false, bankerPair: false },
+      });
+      state = reducer(state, { type: "end-session", now: 5_000 });
+    }
+    const ids = state.archive.map((row) => row.id);
+    expect(ids).toHaveLength(3);
+    expect(new Set(ids).size).toBe(3);
+
+    // ...and deleting one takes exactly one.
+    const after = reducer(state, { type: "delete-session", id: ids[0]! });
+    expect(after.archive).toHaveLength(2);
+  });
+
+  it("removes only the named row", () => {
+    const state = withTwoSessions();
+    expect(state.archive).toHaveLength(2);
+    const target = state.archive[0]!.id;
+    const after = reducer(state, { type: "delete-session", id: target });
+    expect(after.archive).toHaveLength(1);
+    expect(after.archive.map((row) => row.id)).not.toContain(target);
+  });
+
+  it("takes the row's numbers out of the lifetime totals exactly once", () => {
+    // `lifetimeStats` sums the archive and ADDS `evicted`, so dropping the
+    // row is the whole job — subtracting from `evicted` as well would
+    // remove its figures twice and could drive the lifetime total negative.
+    const state = withTwoSessions();
+    const before = lifetimeStats(state.archive, undefined, state.evicted);
+    const removed = state.archive[0]!;
+    const after = reducer(state, { type: "delete-session", id: removed.id });
+    const now = lifetimeStats(after.archive, undefined, after.evicted);
+
+    expect(now.sessions).toBe(before.sessions - 1);
+    expect(now.totalWagered).toBeCloseTo(before.totalWagered - removed.totalWagered, 8);
+    expect(now.netProfit).toBeCloseTo(before.netProfit - removed.netProfit, 8);
+    expect(now.wagers).toBe(before.wagers - removed.wagers);
+    expect(after.evicted).toBe(state.evicted);
+  });
+
+  it("is a no-op for an id that is not there, and keeps the same object", () => {
+    const state = withTwoSessions();
+    expect(reducer(state, { type: "delete-session", id: "nope" })).toBe(state);
+  });
+
+  it("survives a round trip through storage", () => {
+    const state = withTwoSessions();
+    const after = reducer(state, { type: "delete-session", id: state.archive[0]!.id });
+    expect(deserializeState(serializeState(after)).archive).toHaveLength(1);
+  });
+});
+
+describe("the Why this fold", () => {
+  it("is closed to begin with", () => {
+    expect(createInitialState().adviceReasonsOpen).toBe(false);
+  });
+
+  it("opens and closes on the action", () => {
+    let state = reducer(createInitialState(), { type: "set-advice-reasons-open", open: true });
+    expect(state.adviceReasonsOpen).toBe(true);
+    state = reducer(state, { type: "set-advice-reasons-open", open: false });
+    expect(state.adviceReasonsOpen).toBe(false);
+  });
+
+  it("survives a round trip through storage", () => {
+    // It lives in app state precisely BECAUSE a `useState` in the card did
+    // not survive a tab switch. Persisting it is the same promise one step
+    // further: the app should not re-fold an explanation you asked for.
+    const open = reducer(createInitialState(), { type: "set-advice-reasons-open", open: true });
+    expect(deserializeState(serializeState(open)).adviceReasonsOpen).toBe(true);
+
+    const shut = reducer(open, { type: "set-advice-reasons-open", open: false });
+    expect(deserializeState(serializeState(shut)).adviceReasonsOpen).toBe(false);
+  });
+
+  it("defaults to closed for state stored before it existed", () => {
+    const before = JSON.parse(serializeState(createInitialState())) as Record<string, unknown>;
+    delete before.adviceReasonsOpen;
+    expect(deserializeState(JSON.stringify(before)).adviceReasonsOpen).toBe(false);
+  });
+
+  it("does not disturb anything else", () => {
+    const state = reducer(createInitialState(), { type: "set-active-system", system: "reverse-12" });
+    const after = reducer(state, { type: "set-advice-reasons-open", open: true });
+    expect(after.activeSystem).toBe("reverse-12");
+    expect(after.session).toBe(state.session);
+  });
+});
+
+describe("undo leaves settings alone", () => {
+  /**
+   * The reported case, and the reason this matters at all: you hit your
+   * stop-win, raise it in Settings to keep playing, mis-tap the next result
+   * — and a whole-snapshot undo puts the old stop-win back, so the app
+   * starts refusing to stake again with nothing on screen saying why.
+   */
+  it("keeps a stop-win raised after the coup being undone", () => {
+    const state = play(
+      createInitialState(),
+      { type: "place-wager", wager: { bet: "banker", amount: 10 } },
+      { type: "record-coup", coup: { outcome: "banker" } },
+      { type: "update-bankroll", bankroll: { stopWin: 5000 } },
+    );
+    expect(state.session.bankroll.stopWin).toBe(5000);
+
+    const undone = reducer(state, { type: "undo" });
+    expect(undone.session.bankroll.stopWin).toBe(5000);
+    // And the coup really was undone.
+    expect(undone.session.coups).toHaveLength(0);
+    expect(undone.session.bankroll.bankroll).toBe(1000);
+  });
+
+  it("keeps every other setting changed since the coup", () => {
+    const before = createInitialState();
+    const state = play(
+      before,
+      { type: "place-wager", wager: { bet: "banker", amount: 10 } },
+      { type: "record-coup", coup: { outcome: "banker" } },
+      { type: "update-bankroll", bankroll: { stopLoss: 4000, tableMax: 9000, unitSize: 50 } },
+      { type: "update-rules", rules: { decks: 6 } },
+      { type: "set-progression", progression: "martingale" },
+      { type: "set-preferred-bet", bet: "player" },
+      { type: "set-kelly-multiplier", multiplier: 0.5 },
+    );
+
+    const undone = reducer(state, { type: "undo" });
+    expect(undone.session.bankroll.stopLoss).toBe(4000);
+    expect(undone.session.bankroll.tableMax).toBe(9000);
+    expect(undone.session.bankroll.unitSize).toBe(50);
+    expect(undone.session.rules.decks).toBe(6);
+    // The plan the player switched to survives; only its live position is
+    // rolled back, and switching plans already reset that.
+    expect(undone.session.progression.id).toBe("martingale");
+    expect(undone.session.preferredBet).toBe("player");
+    expect(undone.session.kellyMultiplier).toBe(0.5);
+    expect(undone.session.coups).toHaveLength(0);
+  });
+
+  it("reverses the coup by delta, so a corrected balance survives", () => {
+    // Banker at 10 pays 9.50, so the balance goes 1000 -> 1009.50. The
+    // player then corrects it to 2000 (they miscounted their chips), and
+    // undo must leave 1990.50 rather than snapping back to 1000.
+    const state = play(
+      createInitialState(),
+      { type: "place-wager", wager: { bet: "banker", amount: 10 } },
+      { type: "record-coup", coup: { outcome: "banker" } },
+    );
+    expect(state.session.bankroll.bankroll).toBeCloseTo(1009.5, 8);
+
+    const corrected = reducer(state, { type: "update-bankroll", bankroll: { bankroll: 2000 } });
+    const undone = reducer(corrected, { type: "undo" });
+    expect(undone.session.bankroll.bankroll).toBeCloseTo(1990.5, 8);
+  });
+
+  it("still restores the shoe, the ladder and the coup list", () => {
+    const state = play(
+      createInitialState(),
+      { type: "set-progression", progression: "martingale" },
+      { type: "add-card", rank: "5" },
+      { type: "add-card", rank: "K" },
+      { type: "place-wager", wager: { bet: "banker", amount: 10 } },
+      { type: "record-coup", coup: { outcome: "player" } },
+    );
+    expect(state.session.progression.units).toBe(2);
+    const dealt = cardsRemaining(createShoe(8)) - cardsRemaining(state.session.shoe);
+    expect(dealt).toBe(2);
+
+    const undone = reducer(state, { type: "undo" });
+    expect(undone.session.progression.units).toBe(1);
+    expect(undone.session.coups).toHaveLength(0);
+    expect(cardsRemaining(undone.session.shoe)).toBe(cardsRemaining(createShoe(8)));
+  });
+
+  it("undoes a new shoe without moving any money", () => {
+    // `new-shoe` is undoable too and removes no coups, so the delta must be
+    // zero rather than "the last coup's profit".
+    const state = play(
+      createInitialState(),
+      { type: "place-wager", wager: { bet: "banker", amount: 10 } },
+      { type: "record-coup", coup: { outcome: "banker" } },
+      { type: "new-shoe" },
+      { type: "update-bankroll", bankroll: { stopWin: 777 } },
+    );
+    const balance = state.session.bankroll.bankroll;
+    const undone = reducer(state, { type: "undo" });
+
+    expect(undone.session.bankroll.bankroll).toBeCloseTo(balance, 8);
+    expect(undone.session.bankroll.stopWin).toBe(777);
+    expect(undone.session.shoeStartIndex).toBe(0);
+    expect(undone.session.coups).toHaveLength(1);
   });
 });

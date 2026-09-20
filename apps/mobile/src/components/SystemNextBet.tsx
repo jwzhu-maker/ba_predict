@@ -1,48 +1,49 @@
+import { nextHandDetail, readSystemNext, tieReconciliation } from "@ba-predict/app-core";
 import { Text, View } from "react-native";
-import { readSystemNext } from "@ba-predict/app-core";
-import { useMoney, useSystemRun } from "../state/store";
+import { useAppState, useMoney, useSystemRun } from "../state/store";
 import { usePalette } from "../theme";
-import { Card, Hint, Notice, Prose } from "./ui";
+import { Card, Hint, Prose } from "./ui";
 
 /**
- * What Reverse 12 says to do on the very next hand.
+ * The active system's own card: its full reading of the next hand.
  *
- * On the Table tab rather than with the analysis, because it is the only part
- * of the system you need while the cards are out: the side, the amount, and —
- * just as often — the fact that it is sitting this one out.
+ * The Bet card above carries the INSTRUCTION — one side, one amount, and
+ * whatever is actually going to be staked. This carries the working: which
+ * hand of the tie-free sequence, which hand it mirrors, where in the group,
+ * when it resumes, and how the rule's hand number lines up with the coup
+ * number on the road. With three ties dealt, "hand 16" is coup 19 on the
+ * board, and nothing else on screen says so.
  *
- * It does not replace the app's own recommendation above it. That one says
- * what the cards are worth; this says what your rule says. They disagree most
- * of the time, and showing both is the honest thing.
+ * It is also where a SECOND system's reading would go; the Bet card can only
+ * ever show the one call that settles.
  */
 
 const SIDE_LABEL = { player: "Player", banker: "Banker" } as const;
 
 export default function SystemNextBet() {
+  const { activeSystem } = useAppState();
   const { run, finished } = useSystemRun();
   const money = useMoney();
   const p = usePalette();
-  const next = run.next;
   const reading = readSystemNext(run);
+  const next = run.next;
 
-  if (run.handsAvailable === 0 && !finished) return null;
-
-  const waiting = reading.handsToWatch;
+  if (activeSystem === null) return null;
 
   const body = () => {
     if (finished) {
       return (
         <Prose>
-          That shoe is finished. Reverse 12 starts again from its warm-up on the next one.
+          That shoe is finished. {run.name} starts again from its warm-up on the next one.
         </Prose>
       );
     }
     if (next.skipped === "warm-up") {
       return (
         <Prose>
-          Watching. {waiting} more hand{waiting === 1 ? "" : "s"} before the first bet, because
-          hand {run.config.lookback + 1} is the first one with a hand {run.config.lookback} back
-          to mirror.
+          Watching. {reading.handsToWatch} more hand{reading.handsToWatch === 1 ? "" : "s"} before
+          the first bet, because hand {run.config.lookback + 1} is the first one with a hand{" "}
+          {run.config.lookback} back to mirror.
         </Prose>
       );
     }
@@ -54,6 +55,8 @@ export default function SystemNextBet() {
         </Prose>
       );
     }
+    // Only a system whose groups gate play can reach this; Reverse Streak
+    // 4 never sits a hand out once it has started.
     if (next.skipped === "group-over") {
       if (reading.resumesAtHand === null) {
         return (
@@ -71,8 +74,6 @@ export default function SystemNextBet() {
         </Prose>
       );
     }
-    // A live hand always has a side; rendering nothing beats inventing one on
-    // an instruction the user puts money behind.
     if (next.bet === null) return null;
     return (
       <View style={{ gap: 4 }}>
@@ -90,45 +91,31 @@ export default function SystemNextBet() {
             {money.format(next.stake)}
           </Text>
         </View>
-        <Hint>
-          Hand {next.hand} · group {next.group}, bet {next.step} of {run.config.groupSize} ·
-          mirroring hand {next.referenceHand}
-          {next.step === 1 ? " · fresh group, back to the base stake" : ""}
-        </Hint>
-        {next.clipped ? (
-          <Notice tone="warn">
-            Your ladder asks for {money.format(next.requestedStake)} here, but the table maximum
-            is {money.format(next.stake)}. The amount above is what you can actually put on.
-          </Notice>
-        ) : null}
-        {next.unaffordable ? (
-          <Notice tone="warn">
-            That is more than your bankroll has left. The rule does not know about your balance
-            — this is the point at which it stops being playable as written.
-          </Notice>
-        ) : null}
+        {/* Shared with the Bet card's own detail line, and shaped by the
+            system: a group step is the ladder rung on Reverse 12 and is not
+            on Reverse Streak 4, where a loss resets one and not the other. */}
+        <Hint>{nextHandDetail(run)}</Hint>
       </View>
     );
   };
 
   return (
     <Card
-      title="Reverse 12 says"
+      title={`${run.name} says`}
       subtitle={finished ? "Last shoe" : `Hand ${next.hand} of this shoe, ties not counted`}
     >
       {body()}
-      {run.tiesRemoved > 0 && !finished ? (
-        <Hint>
-          {run.tiesRemoved} tie{run.tiesRemoved === 1 ? "" : "s"} recorded and not counted, so this
-          is hand {next.hand} of the rule but coup {run.tiesRemoved + next.hand} of the shoe.
-        </Hint>
-      ) : null}
-      {run.approximate ? (
-        <Notice tone="warn">
-          Your table pays a reduced rate on a Banker win with 6, which recorded coups do not
-          capture, so this shoe’s Banker results are slightly generous.
-        </Notice>
-      ) : null}
+      {/* Rendered on every hand, including before the first tie: appearing
+          only once a tie was dealt made the card grow mid-shoe and moved the
+          Record buttons under the thumb reaching for them. */}
+      {finished ? null : <Hint>{tieReconciliation(run)}</Hint>}
+      {/*
+        The "Banker results are slightly generous" caveat is NOT here. It
+        qualifies the shoe's TOTALS, which this card does not show, and it
+        appeared the first time a Banker hand was settled — growing the card
+        mid-shoe and moving the Record buttons. The run card on the
+        Strategies tab carries it, beside the numbers it is about.
+      */}
     </Card>
   );
 }
