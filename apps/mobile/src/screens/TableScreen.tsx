@@ -1,5 +1,4 @@
 import {
-  BET_TYPES,
   RANKS,
   betLabel,
   cardsRemaining,
@@ -43,10 +42,12 @@ export default function TableScreen() {
   const [bankerPair, setBankerPair] = useState(false);
   const [cardCount, setCardCount] = useState<4 | 5 | 6 | null>(null);
   const [bankerWinOnSix, setBankerWinOnSix] = useState(false);
-  const [manualBet, setManualBet] = useState<BetType>("banker");
-  const [manualAmount, setManualAmount] = useState(session.bankroll.tableMin);
+  // Null means "follow the Bet card"; touching a control pins a value, and
+  // taking the wager back (or the app's call moving on) releases it again.
+  const [betOverride, setBetOverride] = useState<BetType | null>(null);
+  const [amountOverride, setAmountOverride] = useState<number | null>(null);
+  const [followedCall, setFollowedCall] = useState("");
 
-  const unit = session.bankroll.unitSize || 1;
   const needsCardCount = settling?.bet === "big" || settling?.bet === "small";
   const needsBankerSix = session.rules.bankerSixPayout !== null && settling?.bet === "banker";
 
@@ -68,9 +69,30 @@ export default function TableScreen() {
     setBankerWinOnSix(false);
   };
 
-  const adjust = (delta: number) => {
-    const next = Math.round((manualAmount + delta * unit) / unit) * unit;
-    setManualAmount(Math.min(Math.max(next, 0), session.bankroll.tableMax));
+  const callKey = `${call.bet ?? "none"}:${call.amount}`;
+  if (callKey !== followedCall) {
+    setFollowedCall(callKey);
+    setBetOverride(null);
+    setAmountOverride(null);
+  }
+
+  const manualBet = betOverride ?? call.bet ?? advice.bet ?? "banker";
+  const suggested = call.amount > 0 ? call.amount : session.bankroll.tableMin;
+  const manualAmount = amountOverride ?? suggested;
+  const onTable = pendingWager !== null;
+
+  const clampStake = (value: number) =>
+    Math.min(Math.max(Math.round(value), 0), session.bankroll.tableMax);
+
+  /**
+   * Scale the stake, guaranteeing movement: +20% of 2 rounds back to 2, and
+   * a button that visibly does nothing reads as broken.
+   */
+  const scale = (factor: number) => {
+    const next = clampStake(manualAmount * factor);
+    setAmountOverride(
+      next !== manualAmount ? next : clampStake(manualAmount + (factor > 1 ? 1 : -1)),
+    );
   };
 
   return (
@@ -246,24 +268,61 @@ export default function TableScreen() {
 
       <ShoeRoads />
 
-      <Card title="Place a bet" subtitle="Or override the recommendation">
+      <Card title="Place a bet" subtitle="To override the recommendation">
+        {/* Player, Tie, Banker in table order and on their own line, with the
+            two real bets given the tap target their use deserves — Tie is a
+            14.4% house edge and should not be as easy to hit as Banker. */}
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {(["player", "tie", "banker"] as const).map((bet) => (
+            <Pressable
+              key={bet}
+              accessibilityRole="button"
+              accessibilityState={{ selected: manualBet === bet }}
+              onPress={() => setBetOverride(bet)}
+              style={[
+                s.chip,
+                bet === "tie" ? { flex: 0 } : { flex: 1 },
+                { alignItems: "center", paddingVertical: 12 },
+                manualBet === bet && { borderColor: p.accent, backgroundColor: `${p.accent}22` },
+              ]}
+            >
+              <Text
+                style={[
+                  s.chipText,
+                  bet !== "tie" && { fontSize: 16, fontWeight: "700" },
+                  manualBet === bet && { color: p.accent },
+                ]}
+              >
+                {betLabel(bet)}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
         <Row>
-          {BET_TYPES.map((bet) => (
+          {(["playerPair", "bankerPair", "eitherPair", "big", "small"] as const).map((bet) => (
             <Chip
               key={bet}
               label={betLabel(bet)}
               active={manualBet === bet}
-              onPress={() => setManualBet(bet)}
+              onPress={() => setBetOverride(bet)}
             />
           ))}
         </Row>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Btn label="−5u" onPress={() => adjust(-5)} />
-          <Btn label="−1u" onPress={() => adjust(-1)} />
+          <Btn label="−50%" onPress={() => scale(0.5)} />
+          <Btn label="−20%" onPress={() => scale(0.8)} />
           <Text style={local.stepperValue}>{money.format(manualAmount)}</Text>
-          <Btn label="+1u" onPress={() => adjust(1)} />
-          <Btn label="+5u" onPress={() => adjust(5)} />
+          <Btn label="+20%" onPress={() => scale(1.2)} />
+          <Btn label="+50%" onPress={() => scale(1.5)} />
         </View>
+        <Row>
+          <Btn label="Double × 2" onPress={() => scale(2)} />
+          <Btn
+            label={`Back to ${money.format(suggested)}`}
+            disabled={amountOverride === null}
+            onPress={() => setAmountOverride(null)}
+          />
+        </Row>
         {advice.valuations ? (
           <Hint>
             {betLabel(manualBet)} costs {formatPercent(advice.valuations[manualBet].houseEdge)} of
@@ -273,17 +332,23 @@ export default function TableScreen() {
         ) : null}
         <Row>
           <Btn
-            label={`Place ${money.format(manualAmount)}`}
+            label={onTable ? "On the table" : `Place ${money.format(manualAmount)}`}
             variant="primary"
-            disabled={manualAmount <= 0 || manualAmount > session.bankroll.bankroll}
+            // Once it is on the table there is nothing left to place; a second
+            // press would only stake it again. Take it back to edit.
+            disabled={onTable || manualAmount <= 0 || manualAmount > session.bankroll.bankroll}
             onPress={() =>
               dispatch({ type: "place-wager", wager: { bet: manualBet, amount: manualAmount } })
             }
           />
           <Btn
             label="Take it back"
-            disabled={!pendingWager}
-            onPress={() => dispatch({ type: "place-wager", wager: null })}
+            disabled={!onTable}
+            onPress={() => {
+              dispatch({ type: "place-wager", wager: null });
+              setBetOverride(null);
+              setAmountOverride(null);
+            }}
           />
         </Row>
       </Card>

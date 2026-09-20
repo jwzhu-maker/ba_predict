@@ -401,14 +401,27 @@ select {
   gap: 6px;
 }
 
+/*
+ * Four percentage buttons plus the amount is five items in one row, and
+ * "−50%" is wider than the "−5u" it replaced — at 360px the row ran 7px past
+ * the viewport and gave the whole Table tab a horizontal scroll.
+ *
+ * So the buttons may shrink (`flex: 0 1 auto`, `min-width: 0`) and the
+ * amount, which is the thing being read, keeps a floor rather than being
+ * squeezed to nothing.
+ */
 .stepper .button {
-  flex: 0 0 auto;
-  padding: 10px 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 10px 6px;
+  font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .stepper-value {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 4.5em;
   text-align: center;
   font-size: 1.15rem;
   font-weight: 680;
@@ -1219,4 +1232,24 @@ select {
 
 .bankroll-meta-top {
   margin: 0 0 6px;
+}
+
+/*
+ * Player / Tie / Banker get their own row, in the order they sit on the
+ * felt, and the two real bets get the tap target their use deserves — Tie is
+ * a 14.4% house edge and does not need to be as easy to hit as Banker's
+ * 1.06%.
+ */
+.chip-row-primary {
+  gap: 8px;
+}
+
+.chip-large {
+  flex: 1;
+  min-width: 0;
+  justify-content: center;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  font-size: 1.05rem;
+  font-weight: 700;
 }
