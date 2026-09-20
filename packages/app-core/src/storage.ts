@@ -60,6 +60,14 @@ export function deserializeState(raw: string | null | undefined): AppState {
       tableMode: parsed.tableMode === "observe" ? "observe" : "play",
       // How much the app should explain is a preference, so it survives too.
       adviceReasonsOpen: parsed.adviceReasonsOpen === true,
+      // An answered-for limit survives a relaunch: reopening the app is not
+      // a reason to be asked about the same stop-loss again. It is checked
+      // against the restored session on the first action either way, so a
+      // payload claiming one that no longer holds corrects itself.
+      acknowledgedStop:
+        parsed.acknowledgedStop === "stop-win" || parsed.acknowledgedStop === "stop-loss"
+          ? parsed.acknowledgedStop
+          : null,
       // Undo history is deliberately not restored: it is a stack of whole
       // sessions, and "undo across a relaunch" is not a promise worth making.
       history: [],

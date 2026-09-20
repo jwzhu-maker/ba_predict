@@ -4,6 +4,7 @@ import {
   initProgression,
   type BetType,
   type CoupInput,
+  type Outcome,
   type PlacedWager,
   type ProgressionId,
   type Rank,
@@ -22,6 +23,7 @@ import {
   type EvictedTotals,
 } from "./archive";
 import { DEFAULT_CURRENCY } from "./currency";
+import { reachedStop, type StopKind } from "./stops";
 import type { TableMode } from "./table-call";
 import { SHOE_ARCHIVE_LIMIT, archiveShoe, type ArchivedShoe } from "./shoe-archive";
 
@@ -84,14 +86,66 @@ export interface AppState {
    * explain, not a per-visit detail, so it survives a relaunch too.
    */
   adviceReasonsOpen: boolean;
+  /**
+   * The limit the player has been shown and has answered for, or null.
+   *
+   * Crossing a stop-win or a stop-loss raises a modal the player has to
+   * answer before doing anything else, and this is what stops that modal
+   * coming back on the next render, the next coup and the next launch: it
+   * remembers WHICH limit was answered for, not merely that something was.
+   *
+   * It is kept honest by `syncAcknowledgedStop`, which clears it the moment
+   * the session stops standing at that limit — so raising a stop-win that
+   * has been reached, editing the bankroll back under it, undoing the coup
+   * that crossed it or closing the session all re-arm the interruption for
+   * the next crossing. Nothing has to remember to reset it.
+   */
+  acknowledgedStop: StopKind | null;
   screen: Screen;
 }
 
 const HISTORY_LIMIT = 200;
 
+/**
+ * The table the app assumes when it has never been told otherwise.
+ *
+ * These live here rather than in the engine's `DEFAULT_RULES` /
+ * `DEFAULT_BANKROLL` on purpose. Those two describe the textbook game — the
+ * 5% commission table, a round 1000 bankroll — and the engine's pricing
+ * tests are written against them; they are a neutral baseline, not a
+ * statement about what a player in front of this app is sitting at. What
+ * the FIRST LAUNCH should show is a product decision, so it is made here,
+ * in one place, for web and mobile alike.
+ *
+ * Only a first launch reads them. Settings are persisted and every later
+ * session is opened from the settings in hand (see `closeSession`), so
+ * changing a number here never reaches back and overwrites a table someone
+ * has already described to the app.
+ */
+export const INITIAL_RULES: Partial<TableRules> = {
+  // No-commission is the common table now: Banker pays even money and a
+  // Banker win with 6 pays half.
+  bankerSixPayout: 0.5,
+};
+
+export const INITIAL_BANKROLL: Partial<BankrollState> = {
+  bankroll: 3000,
+  startingBankroll: 3000,
+  // One unit is one table minimum. A unit below the minimum cannot be
+  // staked — the advisor clamps every stake up to the floor — which would
+  // leave the ladders counting in a unit the table will not accept.
+  unitSize: 50,
+  tableMin: 50,
+  tableMax: 10_000,
+  // Both are measured as PROFIT from where the session opened, not as a
+  // balance: up 3300, or down 1000.
+  stopWin: 3300,
+  stopLoss: 1000,
+};
+
 export function createInitialState(): AppState {
   return {
-    session: createSession(),
+    session: createSession({ rules: INITIAL_RULES, bankroll: INITIAL_BANKROLL }),
     history: [],
     cardEntry: [],
     pendingWager: null,
@@ -104,6 +158,7 @@ export function createInitialState(): AppState {
     skipNextCoup: false,
     tableMode: "play",
     adviceReasonsOpen: false,
+    acknowledgedStop: null,
     screen: "table",
   };
 }
@@ -127,6 +182,25 @@ export type Action =
       wager?: PlacedWager | null;
       now?: number;
     }
+  | {
+      /**
+       * A run of results typed in at once, e.g. a shoe already in progress
+       * when the player sat down, or the road on the table's display.
+       *
+       * Deliberately NOT a loop of `record-coup`: nothing is staked and no
+       * cards are consumed, because these coups are history rather than
+       * hands the app was asked to call. They fill in the roads, the shoe's
+       * pattern and every replay that reads the coup list, and they leave
+       * the ledger — the bankroll, the ladder and the strategy record's
+       * money — exactly where they were.
+       *
+       * One undo step covers the whole run, which is the only sane answer
+       * for a mis-typed string: a 40-character paste must not take 40
+       * presses of Undo to take back.
+       */
+      type: "record-coups";
+      outcomes: readonly Outcome[];
+    }
   | { type: "undo" }
   | { type: "new-shoe"; now?: number }
   | { type: "reset-session" }
@@ -139,6 +213,8 @@ export type Action =
   | { type: "skip-next-coup"; skip: boolean }
   | { type: "set-table-mode"; mode: TableMode }
   | { type: "set-advice-reasons-open"; open: boolean }
+  /** "I have seen that I am at my limit." Answered per limit, not per coup. */
+  | { type: "acknowledge-stop" }
   | { type: "update-rules"; rules: Partial<TableRules> }
   | { type: "update-bankroll"; bankroll: Partial<BankrollState> }
   | { type: "set-progression"; progression: ProgressionId }
@@ -314,7 +390,31 @@ function fileShoe(state: AppState, now: number): ArchivedShoe[] {
   return next.length > SHOE_ARCHIVE_LIMIT ? next.slice(next.length - SHOE_ARCHIVE_LIMIT) : next;
 }
 
+/**
+ * Keep the answered-for limit true of the session as it now stands.
+ *
+ * Run after every action rather than unpicked action by action, because
+ * almost everything can move a session off a limit: settling a coup, undoing
+ * one, editing the bankroll or the limits themselves, closing the session,
+ * restoring a payload from storage. Clearing it here means the modal re-arms
+ * for the next crossing without a dozen cases each having to remember to say
+ * so — and the one case that must NOT clear it, answering the modal while
+ * still at the limit, keeps it because the kinds match.
+ */
+function syncAcknowledgedStop(state: AppState): AppState {
+  if (state.acknowledgedStop === null) return state;
+  if (reachedStop(state.session) === state.acknowledgedStop) return state;
+  return { ...state, acknowledgedStop: null };
+}
+
 export function reducer(state: AppState, action: Action): AppState {
+  const next = reduceAction(state, action);
+  // An action that changed nothing cannot have moved a limit either, and
+  // returning the same object is what lets React skip the re-render.
+  return next === state ? state : syncAcknowledgedStop(next);
+}
+
+function reduceAction(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "hydrate":
       return action.state;
@@ -360,6 +460,14 @@ export function reducer(state: AppState, action: Action): AppState {
     case "set-advice-reasons-open":
       return { ...state, adviceReasonsOpen: action.open };
 
+    case "acknowledge-stop": {
+      // Recorded as the limit actually standing, so that answering for a
+      // stop-loss does not also silently answer for the stop-win met later.
+      const stop = reachedStop(state.session);
+      if (stop === null || stop === state.acknowledgedStop) return state;
+      return { ...state, acknowledgedStop: stop };
+    }
+
     case "skip-next-coup":
       return {
         ...state,
@@ -388,6 +496,23 @@ export function reducer(state: AppState, action: Action): AppState {
         // The skip was for this coup; the next hand is a new decision.
         skipNextCoup: false,
         lastSettlement: settlement,
+      };
+    }
+
+    case "record-coups": {
+      if (action.outcomes.length === 0) return state;
+      let session = state.session;
+      for (const outcome of action.outcomes) {
+        // No wager, so `applyCoup` leaves the bankroll and the ladder alone
+        // and appends a road-only record.
+        session = applyCoup(session, { outcome }, null).session;
+      }
+      return {
+        ...state,
+        history: remember(state),
+        session,
+        // `cardEntry` and `pendingWager` belong to the coup still to come,
+        // and none of these settled it, so both are left standing.
       };
     }
 

@@ -11,13 +11,14 @@ function play(state: AppState, ...actions: Parameters<typeof reducer>[1][]): App
 
 describe("reducer", () => {
   it("settles a wager and advances the ladder", () => {
+    const opening = createInitialState().session.bankroll.bankroll;
     const state = play(
       { ...createInitialState(), session: { ...createInitialState().session } },
       { type: "set-progression", progression: "martingale" },
       { type: "place-wager", wager: { bet: "banker", amount: 10 } },
       { type: "record-coup", coup: { outcome: "player" } },
     );
-    expect(state.session.bankroll.bankroll).toBe(990);
+    expect(state.session.bankroll.bankroll).toBe(opening - 10);
     expect(state.session.progression.units).toBe(2);
     expect(state.pendingWager).toBeNull();
   });
@@ -151,7 +152,9 @@ describe("persistence", () => {
     expect(deserializeState(null).session.coups).toEqual([]);
     expect(deserializeState("not json").session.coups).toEqual([]);
     expect(deserializeState("{}").session.coups).toEqual([]);
-    expect(deserializeState('{"session":{}}').session.bankroll.bankroll).toBe(1000);
+    expect(deserializeState('{"session":{}}').session.bankroll.bankroll).toBe(
+      createInitialState().session.bankroll.bankroll,
+    );
   });
 });
 
@@ -452,7 +455,9 @@ describe("undo leaves settings alone", () => {
     expect(undone.session.bankroll.stopWin).toBe(5000);
     // And the coup really was undone.
     expect(undone.session.coups).toHaveLength(0);
-    expect(undone.session.bankroll.bankroll).toBe(1000);
+    expect(undone.session.bankroll.bankroll).toBe(
+      createInitialState().session.bankroll.bankroll,
+    );
   });
 
   it("keeps every other setting changed since the coup", () => {
@@ -482,19 +487,21 @@ describe("undo leaves settings alone", () => {
   });
 
   it("reverses the coup by delta, so a corrected balance survives", () => {
-    // Banker at 10 pays 9.50, so the balance goes 1000 -> 1009.50. The
-    // player then corrects it to 2000 (they miscounted their chips), and
-    // undo must leave 1990.50 rather than snapping back to 1000.
+    // Banker at 10 on the default no-commission table, not won with 6, pays
+    // 10 — so the balance goes opening -> opening + 10. The player then
+    // corrects it to 9000 (they miscounted their chips), and undo must
+    // leave 8990 rather than snapping back to the opening balance.
+    const opening = createInitialState().session.bankroll.bankroll;
     const state = play(
       createInitialState(),
       { type: "place-wager", wager: { bet: "banker", amount: 10 } },
-      { type: "record-coup", coup: { outcome: "banker" } },
+      { type: "record-coup", coup: { outcome: "banker", bankerWinOnSix: false } },
     );
-    expect(state.session.bankroll.bankroll).toBeCloseTo(1009.5, 8);
+    expect(state.session.bankroll.bankroll).toBeCloseTo(opening + 10, 8);
 
-    const corrected = reducer(state, { type: "update-bankroll", bankroll: { bankroll: 2000 } });
+    const corrected = reducer(state, { type: "update-bankroll", bankroll: { bankroll: 9000 } });
     const undone = reducer(corrected, { type: "undo" });
-    expect(undone.session.bankroll.bankroll).toBeCloseTo(1990.5, 8);
+    expect(undone.session.bankroll.bankroll).toBeCloseTo(8990, 8);
   });
 
   it("still restores the shoe, the ladder and the coup list", () => {

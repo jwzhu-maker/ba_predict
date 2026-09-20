@@ -15,13 +15,29 @@ function play(state: AppState, ...actions: Parameters<typeof reducer>[1][]): App
   return actions.reduce((current, action) => reducer(current, action), state);
 }
 
-/** Bet 10 on Banker and settle it the given way. */
+/**
+ * Bet 10 on Banker and settle it the given way.
+ *
+ * `bankerWinOnSix` is answered because the app's default table is
+ * no-commission, where a Banker win pays even money unless it came on a 6 —
+ * so a win here is worth exactly +10. Leaving it unanswered would settle
+ * provisionally and flag the coup as unsettled, which is a different test.
+ * On a commission table (`createSession()`, which these tests also use) the
+ * field is ignored and a win pays 9.50.
+ */
 function wager(outcome: "banker" | "player" | "tie", now?: number) {
   return [
     { type: "place-wager", wager: { bet: "banker", amount: 10 } },
-    { type: "record-coup", coup: { outcome }, ...(now === undefined ? {} : { now }) },
+    {
+      type: "record-coup",
+      coup: { outcome, bankerWinOnSix: false },
+      ...(now === undefined ? {} : { now }),
+    },
   ] as Parameters<typeof reducer>[1][];
 }
+
+/** What a fresh install opens with, so these read as "opening ± the play". */
+const OPENING = createInitialState().session.bankroll.bankroll;
 
 describe("archiveSession", () => {
   it("summarises a played session", () => {
@@ -54,11 +70,11 @@ describe("ending a session", () => {
   it("files it and carries the money forward", () => {
     let state = play(createInitialState(), ...wager("banker"));
     const ending = state.session.bankroll.bankroll;
-    expect(ending).toBeCloseTo(1009.5, 10);
+    expect(ending).toBeCloseTo(OPENING + 10, 10);
 
     state = reducer(state, { type: "end-session", now: 9999 });
     expect(state.archive).toHaveLength(1);
-    expect(state.archive[0]!.netProfit).toBeCloseTo(9.5, 10);
+    expect(state.archive[0]!.netProfit).toBeCloseTo(10, 10);
     // The new session opens on the money actually in hand, at zero profit.
     expect(state.session.bankroll.bankroll).toBeCloseTo(ending, 10);
     expect(state.session.bankroll.startingBankroll).toBeCloseTo(ending, 10);
@@ -126,7 +142,8 @@ describe("lifetimeStats", () => {
     expect(withCurrent.sessions).toBe(2);
     expect(withCurrent.wagers).toBe(2);
     expect(withCurrent.totalWagered).toBe(20);
-    expect(withCurrent.netProfit).toBeCloseTo(-0.5, 10);
+    // A Banker win of 10 and a Banker bet lost to Player: exactly level.
+    expect(withCurrent.netProfit).toBeCloseTo(0, 10);
     expect(withCurrent.winningSessions).toBe(1);
 
     const archiveOnly = lifetimeStats(state.archive);
@@ -151,7 +168,7 @@ describe("lifetimeStats", () => {
     state = reducer(state, { type: "end-session", now: 2 });
 
     const totals = lifetimeStats(state.archive);
-    expect(totals.bestSession).toBeCloseTo(9.5, 10);
+    expect(totals.bestSession).toBeCloseTo(10, 10);
     expect(totals.worstSession).toBe(-20);
     expect(totals.worstDrawdown).toBe(20);
   });
@@ -184,7 +201,7 @@ describe("best and worst nights", () => {
     const totals = lifetimeStats(state.archive);
     // One winning session, so there is no worst night to name. Reporting 0
     // here would claim a break-even session that never happened.
-    expect(totals.bestSession).toBeCloseTo(9.5, 10);
+    expect(totals.bestSession).toBeCloseTo(10, 10);
     expect(totals.worstSession).toBeNull();
   });
 
@@ -217,7 +234,7 @@ describe("a session that spans several shoes", () => {
     const archived = archiveSession(state.session, 40)!;
     expect(archived.wagers).toBe(3);
     expect(archived.totalWagered).toBe(30);
-    expect(archived.netProfit).toBeCloseTo(9.5 - 10 - 10, 10);
+    expect(archived.netProfit).toBeCloseTo(10 - 10 - 10, 10);
   });
 
   it("still files the session when a new shoe was the last thing that happened", () => {

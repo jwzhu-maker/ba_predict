@@ -1428,3 +1428,93 @@ select {
 .advice-why .advice-reasons {
   margin-top: 4px;
 }
+
+
+/*
+ * The stop-win / stop-loss dialog.
+ *
+ * The only thing in this app that covers the screen, so it is the only
+ * thing above the header and the dock (`z-index: 5` each). It is centred on
+ * a phone and pinned to the middle on anything wider, and it keeps the
+ * safe-area insets because on a notched display in standalone mode the
+ * buttons would otherwise sit under the home indicator — on the one dialog
+ * whose buttons must be pressable.
+ */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 16px);
+  background: rgb(4 8 16 / 0.72);
+  backdrop-filter: blur(2px);
+}
+
+.modal {
+  width: 100%;
+  max-width: 420px;
+  max-height: 100%;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px 16px 14px;
+  /* The colour says which limit before a word is read. */
+  border-top: 3px solid var(--border);
+}
+
+/*
+ * The dialog takes focus itself (see `StopDialog`), and a focus ring drawn
+ * around the whole panel says nothing the panel does not already say. The
+ * buttons inside keep theirs.
+ */
+.modal:focus {
+  outline: none;
+}
+
+.modal-good {
+  border-top-color: var(--accent);
+}
+
+.modal-warn {
+  border-top-color: var(--danger);
+}
+
+.modal-title {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+  font-weight: 640;
+}
+
+.modal-body p {
+  margin: 0 0 10px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+/*
+ * Stacked, not side by side, and the close-the-session button first.
+ * Two equal buttons in a row is the shape of a dialog people dismiss
+ * without reading, and the default on a limit should be the answer the
+ * player gave themselves in advance.
+ */
+.modal-actions > .button {
+  width: 100%;
+}
+
+.modal-note {
+  margin: 12px 0 0;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
