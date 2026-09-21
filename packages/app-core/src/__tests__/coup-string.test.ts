@@ -129,6 +129,35 @@ describe("recording a run of results", () => {
     expect(undone.cardEntry).toEqual(["8", "K"]);
   });
 
+  it("keeps inputs entered AFTER the run, which the run never saw", () => {
+    // The order that the first fix got wrong: type the run, start setting
+    // up the next hand, then spot the typo. Undo must take back the run and
+    // leave the wager and cards just entered alone — restoring a snapshot
+    // taken before the run would quietly delete them.
+    const state = play(
+      createInitialState(),
+      { type: "record-coups", outcomes: parseOutcomeString("BPPBT").outcomes },
+      { type: "place-wager", wager: { bet: "banker", amount: 150 } },
+      { type: "add-card", rank: "4" },
+    );
+    const undone = reducer(state, { type: "undo" });
+    expect(undone.session.coups).toHaveLength(0);
+    expect(undone.pendingWager).toEqual({ bet: "banker", amount: 150 });
+    expect(undone.cardEntry).toEqual(["4"]);
+  });
+
+  it("keeps an input CHANGED after the run, rather than reverting it", () => {
+    const state = play(
+      createInitialState(),
+      { type: "place-wager", wager: { bet: "player", amount: 50 } },
+      { type: "record-coups", outcomes: ["banker", "player"] },
+      // Thought better of it: same field, new value, after the run.
+      { type: "place-wager", wager: { bet: "banker", amount: 200 } },
+    );
+    const undone = reducer(state, { type: "undo" });
+    expect(undone.pendingWager).toEqual({ bet: "banker", amount: 200 });
+  });
+
   it("does nothing at all with nothing to record", () => {
     const before = createInitialState();
     expect(reducer(before, { type: "record-coups", outcomes: [] })).toBe(before);

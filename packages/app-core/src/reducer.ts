@@ -32,20 +32,26 @@ export type Screen = "table" | "roads" | "simulator" | "history" | "settings";
 /**
  * One step on the undo stack.
  *
- * The session snapshot alone is not enough. `cardEntry` and `pendingWager`
- * belong to the coup that has NOT happened yet, and an undoable action can
- * leave them standing (a typed run of results settles nothing, so it does),
- * so undo has to put back what was there rather than clearing them: undoing
- * a mistyped run must not also throw away the wager on the felt and the
- * cards counted for the hand about to be dealt. For a recorded coup they
- * are what the coup consumed, and restoring them is equally right — the
- * coup is being taken back, so its stake goes back on the table and its
- * cards go back in the buffer, alongside the shoe the snapshot restores.
+ * The session snapshot alone is not enough, because `cardEntry` and
+ * `pendingWager` belong to the coup that has NOT happened yet, and the
+ * undoable actions divide into two kinds:
+ *
+ *   - Those that CONSUME them. Recording a coup puts the cards into the
+ *     coup and settles the wager; a new shoe discards both. Undo has to put
+ *     them back — the coup is being taken back, so its stake returns to the
+ *     table and its cards to the buffer, alongside the shoe the snapshot
+ *     restores. That is what `consumed` carries.
+ *   - Those that never touch them. A typed run of results settles nothing,
+ *     so whatever is pending stays pending. There `consumed` is null and
+ *     undo leaves the two fields exactly as they stand — which matters most
+ *     when they were set AFTER the run: preparing the next hand and then
+ *     spotting a typo in the run must not cost you the wager and cards you
+ *     just entered. Restoring a snapshot taken before the run would.
  */
 export interface UndoStep {
   session: SessionState;
-  cardEntry: Rank[];
-  pendingWager: PlacedWager | null;
+  /** What the undone action took, or null when it took nothing. */
+  consumed: { cardEntry: Rank[]; pendingWager: PlacedWager | null } | null;
 }
 
 export interface AppState {
@@ -243,10 +249,22 @@ export type Action =
   | { type: "set-kelly-multiplier"; multiplier: number }
   | { type: "hydrate"; state: AppState };
 
-function remember(state: AppState): UndoStep[] {
+/**
+ * Push an undo step.
+ *
+ * `consumesInputs` says whether the action about to run takes the pending
+ * card entry and wager with it. See `UndoStep`; getting it wrong in either
+ * direction loses somebody's input.
+ */
+function remember(state: AppState, consumesInputs: boolean): UndoStep[] {
   const history = [
     ...state.history,
-    { session: state.session, cardEntry: state.cardEntry, pendingWager: state.pendingWager },
+    {
+      session: state.session,
+      consumed: consumesInputs
+        ? { cardEntry: state.cardEntry, pendingWager: state.pendingWager }
+        : null,
+    },
   ];
   return history.length > HISTORY_LIMIT ? history.slice(history.length - HISTORY_LIMIT) : history;
 }
@@ -514,7 +532,9 @@ function reduceAction(state: AppState, action: Action): AppState {
         session.firstWagerAt ?? (settlement ? (action.now ?? Date.now()) : null);
       return {
         ...state,
-        history: remember(state),
+        // The cards went into the coup and the wager settled, so undo has
+        // to hand both back.
+        history: remember(state, true),
         session: { ...session, firstWagerAt },
         cardEntry: [],
         pendingWager: null,
@@ -534,12 +554,13 @@ function reduceAction(state: AppState, action: Action): AppState {
       }
       return {
         ...state,
-        history: remember(state),
+        // Nothing here settles a wager or eats a card, so the undo step
+        // consumes nothing and taking the run back leaves whatever is
+        // pending alone — including inputs entered after the run.
+        history: remember(state, false),
         session,
         // `cardEntry` and `pendingWager` belong to the coup still to come,
-        // and none of these settled it, so both are left standing — and the
-        // undo step above carries them, so taking the run back leaves them
-        // standing too.
+        // and none of these settled it, so both are left standing.
       };
     }
 
@@ -551,10 +572,10 @@ function reduceAction(state: AppState, action: Action): AppState {
         // Not `previous.session` wholesale: that reverts settings changed since.
         session: undoSession(state.session, previous.session),
         history: state.history.slice(0, -1),
-        // What was pending BEFORE the undone action, not a blank slate. See
-        // `UndoStep`.
-        cardEntry: previous.cardEntry,
-        pendingWager: previous.pendingWager,
+        // What the undone action consumed, or what stands now if it
+        // consumed nothing. See `UndoStep`.
+        cardEntry: previous.consumed ? previous.consumed.cardEntry : state.cardEntry,
+        pendingWager: previous.consumed ? previous.consumed.pendingWager : state.pendingWager,
         lastSettlement: null,
       };
     }
@@ -566,7 +587,9 @@ function reduceAction(state: AppState, action: Action): AppState {
       // where this shoe's road starts moves.
       return {
         ...state,
-        history: remember(state),
+        // A new shoe throws the pending inputs away below, so undo puts
+        // them back.
+        history: remember(state, true),
         session: {
           ...state.session,
           shoe: createShoe(state.session.rules.decks),

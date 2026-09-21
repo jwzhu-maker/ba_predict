@@ -63,6 +63,23 @@ describe("reducer", () => {
     expect(undone.cardEntry).toEqual([]);
   });
 
+  it("hands back the cards and the wager a new shoe threw away", () => {
+    // `new-shoe` clears both, so undoing it has to put them back — the
+    // other half of the rule that leaves them alone for a typed run.
+    const state = play(
+      createInitialState(),
+      { type: "place-wager", wager: { bet: "banker", amount: 50 } },
+      { type: "add-card", rank: "7" },
+      { type: "new-shoe", now: 1 },
+    );
+    expect(state.pendingWager).toBeNull();
+    expect(state.cardEntry).toEqual([]);
+
+    const undone = reducer(state, { type: "undo" });
+    expect(undone.pendingWager).toEqual({ bet: "banker", amount: 50 });
+    expect(undone.cardEntry).toEqual(["7"]);
+  });
+
   it("does nothing when there is nothing to undo", () => {
     const start = createInitialState();
     expect(reducer(start, { type: "undo" })).toBe(start);
