@@ -110,6 +110,25 @@ describe("recording a run of results", () => {
     expect(state.pendingWager).toEqual({ bet: "player", amount: 50 });
   });
 
+  it("keeps the wager and the tracked cards through the undo as well", () => {
+    // The one-step undo advertised for a mistyped run must take back the
+    // run and NOTHING else. Both of these belong to the hand about to be
+    // dealt, which the run never touched, so a generic "clear the pending
+    // inputs" undo would quietly throw away a stake on the felt and a
+    // half-counted coup.
+    const state = play(
+      createInitialState(),
+      { type: "place-wager", wager: { bet: "player", amount: 50 } },
+      { type: "add-card", rank: "8" },
+      { type: "add-card", rank: "K" },
+      { type: "record-coups", outcomes: parseOutcomeString("BPPBT").outcomes },
+    );
+    const undone = reducer(state, { type: "undo" });
+    expect(undone.session.coups).toHaveLength(0);
+    expect(undone.pendingWager).toEqual({ bet: "player", amount: 50 });
+    expect(undone.cardEntry).toEqual(["8", "K"]);
+  });
+
   it("does nothing at all with nothing to record", () => {
     const before = createInitialState();
     expect(reducer(before, { type: "record-coups", outcomes: [] })).toBe(before);

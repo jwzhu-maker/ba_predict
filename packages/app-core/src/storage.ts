@@ -2,6 +2,7 @@ import { BETTING_SYSTEMS } from "@ba-predict/engine";
 import { isArchivedSession, parseEvictedTotals } from "./archive";
 import { isArchivedShoe } from "./shoe-archive";
 import { createInitialState, type AppState } from "./reducer";
+import type { ReachedStop } from "./stops";
 
 /**
  * Persistence, split from the storage backend.
@@ -13,6 +14,23 @@ import { createInitialState, type AppState } from "./reducer";
  */
 
 export const STORAGE_KEY = "ba_predict:state:v1";
+
+/**
+ * The answered-for limit, or null for anything that is not one.
+ *
+ * Written defensively because it reaches here from whatever is in storage:
+ * a payload from a build that stored the kind alone (a bare string), a
+ * half-written object, or a limit that is not a number. None of those may
+ * suppress the dialog, so anything that is not a complete {kind, limit}
+ * falls back to "nothing has been answered for".
+ */
+function parseAcknowledgedStop(value: unknown): ReachedStop | null {
+  if (typeof value !== "object" || value === null) return null;
+  const { kind, limit } = value as Partial<ReachedStop>;
+  if (kind !== "stop-win" && kind !== "stop-loss") return null;
+  if (typeof limit !== "number" || !Number.isFinite(limit)) return null;
+  return { kind, limit };
+}
 
 /** The slice of state worth keeping across launches. */
 export function serializeState(state: AppState): string {
@@ -64,10 +82,7 @@ export function deserializeState(raw: string | null | undefined): AppState {
       // a reason to be asked about the same stop-loss again. It is checked
       // against the restored session on the first action either way, so a
       // payload claiming one that no longer holds corrects itself.
-      acknowledgedStop:
-        parsed.acknowledgedStop === "stop-win" || parsed.acknowledgedStop === "stop-loss"
-          ? parsed.acknowledgedStop
-          : null,
+      acknowledgedStop: parseAcknowledgedStop(parsed.acknowledgedStop),
       // Undo history is deliberately not restored: it is a stack of whole
       // sessions, and "undo across a relaunch" is not a promise worth making.
       history: [],

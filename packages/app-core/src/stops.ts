@@ -17,12 +17,33 @@ import type { SessionState } from "@ba-predict/engine";
  */
 export type StopKind = "stop-win" | "stop-loss";
 
-export function reachedStop(session: SessionState): StopKind | null {
+/**
+ * A limit that is currently reached, and the number it was set to.
+ *
+ * The VALUE is carried, not just the kind, because it is what makes an
+ * answer specific: raising a reached stop-loss from 1000 to 1500 while
+ * 2000 down leaves the same kind standing, and an answer given for the old
+ * number was never given for the new one. Comparing both is what re-arms
+ * the interruption when a limit is moved and the session is still past it.
+ */
+export interface ReachedStop {
+  kind: StopKind;
+  /** The limit itself, as profit from where the session opened. */
+  limit: number;
+}
+
+export function reachedStop(session: SessionState): ReachedStop | null {
   const { bankroll, startingBankroll, stopWin, stopLoss } = session.bankroll;
   const profit = bankroll - startingBankroll;
-  if (stopWin !== null && profit >= stopWin) return "stop-win";
-  if (stopLoss !== null && -profit >= stopLoss) return "stop-loss";
+  if (stopWin !== null && profit >= stopWin) return { kind: "stop-win", limit: stopWin };
+  if (stopLoss !== null && -profit >= stopLoss) return { kind: "stop-loss", limit: stopLoss };
   return null;
+}
+
+/** Whether two limits are the same limit, set to the same number. */
+export function sameStop(a: ReachedStop | null, b: ReachedStop | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.kind === b.kind && a.limit === b.limit;
 }
 
 /** How far past the limit the session is, as a positive amount. */

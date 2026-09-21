@@ -23,16 +23,35 @@ import {
   type EvictedTotals,
 } from "./archive";
 import { DEFAULT_CURRENCY } from "./currency";
-import { reachedStop, type StopKind } from "./stops";
+import { reachedStop, sameStop, type ReachedStop } from "./stops";
 import type { TableMode } from "./table-call";
 import { SHOE_ARCHIVE_LIMIT, archiveShoe, type ArchivedShoe } from "./shoe-archive";
 
 export type Screen = "table" | "roads" | "simulator" | "history" | "settings";
 
+/**
+ * One step on the undo stack.
+ *
+ * The session snapshot alone is not enough. `cardEntry` and `pendingWager`
+ * belong to the coup that has NOT happened yet, and an undoable action can
+ * leave them standing (a typed run of results settles nothing, so it does),
+ * so undo has to put back what was there rather than clearing them: undoing
+ * a mistyped run must not also throw away the wager on the felt and the
+ * cards counted for the hand about to be dealt. For a recorded coup they
+ * are what the coup consumed, and restoring them is equally right — the
+ * coup is being taken back, so its stake goes back on the table and its
+ * cards go back in the buffer, alongside the shoe the snapshot restores.
+ */
+export interface UndoStep {
+  session: SessionState;
+  cardEntry: Rank[];
+  pendingWager: PlacedWager | null;
+}
+
 export interface AppState {
   session: SessionState;
   /** Snapshots for undo, oldest first. */
-  history: SessionState[];
+  history: UndoStep[];
   /** Cards entered for the coup in progress, for composition tracking. */
   cardEntry: Rank[];
   /** The wager currently on the table, if any. */
@@ -92,15 +111,17 @@ export interface AppState {
    * Crossing a stop-win or a stop-loss raises a modal the player has to
    * answer before doing anything else, and this is what stops that modal
    * coming back on the next render, the next coup and the next launch: it
-   * remembers WHICH limit was answered for, not merely that something was.
+   * remembers WHICH limit was answered for — the kind AND the number it was
+   * set to — not merely that something was.
    *
    * It is kept honest by `syncAcknowledgedStop`, which clears it the moment
-   * the session stops standing at that limit — so raising a stop-win that
-   * has been reached, editing the bankroll back under it, undoing the coup
-   * that crossed it or closing the session all re-arm the interruption for
-   * the next crossing. Nothing has to remember to reset it.
+   * the session stops standing at that exact limit — so moving a limit that
+   * has been reached (even to another number the session is still past),
+   * editing the bankroll back inside it, undoing the coup that crossed it
+   * or closing the session all re-arm the interruption. Nothing has to
+   * remember to reset it.
    */
-  acknowledgedStop: StopKind | null;
+  acknowledgedStop: ReachedStop | null;
   screen: Screen;
 }
 
@@ -222,8 +243,11 @@ export type Action =
   | { type: "set-kelly-multiplier"; multiplier: number }
   | { type: "hydrate"; state: AppState };
 
-function remember(state: AppState): SessionState[] {
-  const history = [...state.history, state.session];
+function remember(state: AppState): UndoStep[] {
+  const history = [
+    ...state.history,
+    { session: state.session, cardEntry: state.cardEntry, pendingWager: state.pendingWager },
+  ];
   return history.length > HISTORY_LIMIT ? history.slice(history.length - HISTORY_LIMIT) : history;
 }
 
@@ -399,11 +423,11 @@ function fileShoe(state: AppState, now: number): ArchivedShoe[] {
  * restoring a payload from storage. Clearing it here means the modal re-arms
  * for the next crossing without a dozen cases each having to remember to say
  * so — and the one case that must NOT clear it, answering the modal while
- * still at the limit, keeps it because the kinds match.
+ * still at the limit, keeps it because both the kind and the number match.
  */
 function syncAcknowledgedStop(state: AppState): AppState {
   if (state.acknowledgedStop === null) return state;
-  if (reachedStop(state.session) === state.acknowledgedStop) return state;
+  if (sameStop(reachedStop(state.session), state.acknowledgedStop)) return state;
   return { ...state, acknowledgedStop: null };
 }
 
@@ -462,9 +486,10 @@ function reduceAction(state: AppState, action: Action): AppState {
 
     case "acknowledge-stop": {
       // Recorded as the limit actually standing, so that answering for a
-      // stop-loss does not also silently answer for the stop-win met later.
+      // stop-loss does not also silently answer for the stop-win met later,
+      // nor for a different number this one is moved to afterwards.
       const stop = reachedStop(state.session);
-      if (stop === null || stop === state.acknowledgedStop) return state;
+      if (stop === null || sameStop(stop, state.acknowledgedStop)) return state;
       return { ...state, acknowledgedStop: stop };
     }
 
@@ -512,7 +537,9 @@ function reduceAction(state: AppState, action: Action): AppState {
         history: remember(state),
         session,
         // `cardEntry` and `pendingWager` belong to the coup still to come,
-        // and none of these settled it, so both are left standing.
+        // and none of these settled it, so both are left standing — and the
+        // undo step above carries them, so taking the run back leaves them
+        // standing too.
       };
     }
 
@@ -521,11 +548,13 @@ function reduceAction(state: AppState, action: Action): AppState {
       if (!previous) return state;
       return {
         ...state,
-        // Not `previous` wholesale: that reverts settings changed since.
-        session: undoSession(state.session, previous),
+        // Not `previous.session` wholesale: that reverts settings changed since.
+        session: undoSession(state.session, previous.session),
         history: state.history.slice(0, -1),
-        cardEntry: [],
-        pendingWager: null,
+        // What was pending BEFORE the undone action, not a blank slate. See
+        // `UndoStep`.
+        cardEntry: previous.cardEntry,
+        pendingWager: previous.pendingWager,
         lastSettlement: null,
       };
     }

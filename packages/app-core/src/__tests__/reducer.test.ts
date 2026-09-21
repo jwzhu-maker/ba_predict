@@ -35,6 +35,34 @@ describe("reducer", () => {
     expect(undone.session.coups).toHaveLength(0);
   });
 
+  it("puts a hand-placed wager and its cards back, so the coup can be re-recorded", () => {
+    // Undo reverses the settlement and restores the shoe; the stake and the
+    // cards that went with that coup belong with it.
+    const after = play(
+      createInitialState(),
+      { type: "place-wager", wager: { bet: "banker", amount: 50 } },
+      { type: "add-card", rank: "9" },
+      { type: "record-coup", coup: { outcome: "banker", bankerWinOnSix: false } },
+    );
+    expect(after.pendingWager).toBeNull();
+    expect(after.cardEntry).toEqual([]);
+
+    const undone = reducer(after, { type: "undo" });
+    expect(undone.pendingWager).toEqual({ bet: "banker", amount: 50 });
+    expect(undone.cardEntry).toEqual(["9"]);
+  });
+
+  it("leaves nothing pending when nothing was pending before the coup", () => {
+    const after = play(createInitialState(), {
+      type: "record-coup",
+      wager: { bet: "banker", amount: 50 },
+      coup: { outcome: "banker", bankerWinOnSix: false },
+    });
+    const undone = reducer(after, { type: "undo" });
+    expect(undone.pendingWager).toBeNull();
+    expect(undone.cardEntry).toEqual([]);
+  });
+
   it("does nothing when there is nothing to undo", () => {
     const start = createInitialState();
     expect(reducer(start, { type: "undo" })).toBe(start);

@@ -5,6 +5,7 @@ import {
   isReplayableBet,
   reachedStop,
   resolveTableCall,
+  sameStop,
   lifetimeStats,
   replayStrategies,
   type LifetimeStats,
@@ -302,10 +303,11 @@ export function usePendingStop(): {
 } | null {
   const { session, acknowledgedStop } = useAppState();
   return useMemo(() => {
-    const kind = reachedStop(session);
-    if (kind === null || kind === acknowledgedStop) return null;
-    const limit = kind === "stop-win" ? session.bankroll.stopWin : session.bankroll.stopLoss;
-    return { kind, limit: limit ?? 0, session };
+    const reached = reachedStop(session);
+    // Same kind AND same number: a limit moved to another value the session
+    // is still past has not been answered for.
+    if (reached === null || sameStop(reached, acknowledgedStop)) return null;
+    return { ...reached, session };
   }, [session, acknowledgedStop]);
 }
 

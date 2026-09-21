@@ -30,13 +30,13 @@ describe("reachedStop", () => {
   it("counts a limit as reached the moment it is touched", () => {
     // `>=`, matching the advisor exactly. Two definitions of "at your
     // limit" that could disagree would be worse than no dialog at all.
-    expect(reachedStop(at(200))).toBe("stop-win");
-    expect(reachedStop(at(-300))).toBe("stop-loss");
+    expect(reachedStop(at(200))).toEqual({ kind: "stop-win", limit: 200 });
+    expect(reachedStop(at(-300))).toEqual({ kind: "stop-loss", limit: 300 });
   });
 
-  it("reports a limit overshot in one coup", () => {
-    expect(reachedStop(at(5000))).toBe("stop-win");
-    expect(reachedStop(at(-5000))).toBe("stop-loss");
+  it("reports a limit overshot in one coup, with the limit that was set", () => {
+    expect(reachedStop(at(5000))).toEqual({ kind: "stop-win", limit: 200 });
+    expect(reachedStop(at(-5000))).toEqual({ kind: "stop-loss", limit: 300 });
   });
 
   it("says nothing when the limit is switched off", () => {
@@ -65,9 +65,9 @@ describe("answering for a limit", () => {
     expect(pastStopLoss().acknowledgedStop).toBeNull();
   });
 
-  it("records the limit actually standing", () => {
+  it("records the limit actually standing, and the number it was set to", () => {
     const answered = reducer(pastStopLoss(), { type: "acknowledge-stop" });
-    expect(answered.acknowledgedStop).toBe("stop-loss");
+    expect(answered.acknowledgedStop).toEqual({ kind: "stop-loss", limit: 1000 });
   });
 
   it("stays answered while the session is still at that limit", () => {
@@ -79,7 +79,7 @@ describe("answering for a limit", () => {
       { type: "record-coup", coup: { outcome: "banker", bankerWinOnSix: false } },
       { type: "record-coup", coup: { outcome: "player" } },
     );
-    expect(later.acknowledgedStop).toBe("stop-loss");
+    expect(later.acknowledgedStop).toEqual({ kind: "stop-loss", limit: 1000 });
   });
 
   it("re-arms once the limit is raised past where the session stands", () => {
@@ -101,13 +101,47 @@ describe("answering for a limit", () => {
     expect(corrected.acknowledgedStop).toBeNull();
   });
 
+  it("re-arms when the limit is MOVED to a number the session is still past", () => {
+    // The reported case: answered for a stop-loss of 1000 while 2000 down,
+    // then the limit is changed to 1500. Same kind, still reached — but the
+    // number now standing is one nobody has been asked about.
+    const deep = reducer(createInitialState(), {
+      type: "update-bankroll",
+      // Down 2000, so the session stays past the limit on BOTH numbers —
+      // which is the whole point: only the number changes.
+      bankroll: { bankroll: createInitialState().session.bankroll.startingBankroll - 2000 },
+    });
+    const answered = reducer(deep, { type: "acknowledge-stop" });
+    expect(answered.acknowledgedStop).toEqual({ kind: "stop-loss", limit: 1000 });
+
+    const moved = reducer(answered, { type: "update-bankroll", bankroll: { stopLoss: 1500 } });
+    expect(reachedStop(moved.session)).toEqual({ kind: "stop-loss", limit: 1500 });
+    expect(moved.acknowledgedStop).toBeNull();
+
+    // And answering the new one sticks, rather than re-asking every action.
+    const reanswered = reducer(moved, { type: "acknowledge-stop" });
+    expect(reanswered.acknowledgedStop).toEqual({ kind: "stop-loss", limit: 1500 });
+    expect(
+      reducer(reanswered, { type: "set-screen", screen: "table" }).acknowledgedStop,
+    ).toEqual({ kind: "stop-loss", limit: 1500 });
+  });
+
+  it("does not re-ask when the limit setting is rewritten to the same number", () => {
+    const answered = reducer(pastStopLoss(), { type: "acknowledge-stop" });
+    const rewritten = reducer(answered, {
+      type: "update-bankroll",
+      bankroll: { stopLoss: answered.session.bankroll.stopLoss },
+    });
+    expect(rewritten.acknowledgedStop).toEqual({ kind: "stop-loss", limit: 1000 });
+  });
+
   it("re-arms for the other limit, having only been answered for one", () => {
     const answered = reducer(pastStopLoss(), { type: "acknowledge-stop" });
     const winning = reducer(answered, {
       type: "update-bankroll",
       bankroll: { bankroll: answered.session.bankroll.startingBankroll + 100_000 },
     });
-    expect(reachedStop(winning.session)).toBe("stop-win");
+    expect(reachedStop(winning.session)).toEqual({ kind: "stop-win", limit: 3300 });
     expect(winning.acknowledgedStop).toBeNull();
   });
 
@@ -124,11 +158,17 @@ describe("answering for a limit", () => {
 
   it("survives a relaunch, and is re-checked against the restored session", () => {
     const answered = reducer(pastStopLoss(), { type: "acknowledge-stop" });
-    expect(deserializeState(serializeState(answered)).acknowledgedStop).toBe("stop-loss");
+    expect(deserializeState(serializeState(answered)).acknowledgedStop).toEqual({
+      kind: "stop-loss",
+      limit: 1000,
+    });
     // A payload claiming a limit that does not hold corrects itself on the
     // first action, rather than suppressing a dialog it has no right to.
     const lying = deserializeState(
-      serializeState({ ...createInitialState(), acknowledgedStop: "stop-win" }),
+      serializeState({
+        ...createInitialState(),
+        acknowledgedStop: { kind: "stop-win", limit: 3300 },
+      }),
     );
     expect(reducer(lying, { type: "set-screen", screen: "settings" }).acknowledgedStop).toBeNull();
   });
