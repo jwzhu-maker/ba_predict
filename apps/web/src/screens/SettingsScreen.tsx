@@ -6,8 +6,33 @@ import {
   type BetType,
   type ProgressionId,
 } from "@ba-predict/engine";
-import { Card, NumberField, Notice, Toggle } from "../components/Primitives";
+import { Card, NumberField, Notice, SelectField, Toggle } from "../components/Primitives";
 import { useAppState, useDispatch } from "../state/store";
+
+/** The shoe sizes a real table is dealt from. */
+const DECK_COUNTS = [1, 2, 4, 6, 8] as const;
+
+/**
+ * Deck counts to offer, including whatever is currently set.
+ *
+ * A list rather than a number box because the choice is a handful of fixed
+ * values, and because a one-character number box is where a controlled
+ * input's refusal to be cleared bites hardest — the field the user reported
+ * as impossible to change. A dropdown cannot be half-typed.
+ *
+ * The current value is folded in so a shoe size set by an older build (or
+ * by a hand-edited payload) is shown rather than silently reading as
+ * whatever sorts first.
+ */
+function deckOptions(current: number): { value: number; label: string }[] {
+  const counts = DECK_COUNTS.includes(current as (typeof DECK_COUNTS)[number])
+    ? [...DECK_COUNTS]
+    : [...DECK_COUNTS, current].sort((a, b) => a - b);
+  return counts.map((count) => ({
+    value: count,
+    label: count === 1 ? "1 deck" : `${count} decks`,
+  }));
+}
 
 export default function SettingsScreen() {
   const { session, currency } = useAppState();
@@ -18,13 +43,12 @@ export default function SettingsScreen() {
     <div className="screen">
       <Card title="Table rules" subtitle="Match these to the table you are actually at">
         <div className="field-grid">
-          <NumberField
+          <SelectField
             label="Decks"
             value={rules.decks}
-            min={1}
-            max={8}
+            options={deckOptions(rules.decks)}
             hint="Changing this starts a new shoe"
-            onChange={(decks) => dispatch({ type: "update-rules", rules: { decks: Math.round(decks) } })}
+            onChange={(decks) => dispatch({ type: "update-rules", rules: { decks } })}
           />
           <NumberField
             label="Tie pays"

@@ -4,6 +4,7 @@ import {
   initProgression,
   type BetType,
   type CoupInput,
+  type Outcome,
   type PlacedWager,
   type ProgressionId,
   type Rank,
@@ -22,15 +23,41 @@ import {
   type EvictedTotals,
 } from "./archive";
 import { DEFAULT_CURRENCY } from "./currency";
+import { reachedStop, sameStop, type ReachedStop } from "./stops";
 import type { TableMode } from "./table-call";
 import { SHOE_ARCHIVE_LIMIT, archiveShoe, type ArchivedShoe } from "./shoe-archive";
 
 export type Screen = "table" | "roads" | "simulator" | "history" | "settings";
 
+/**
+ * One step on the undo stack.
+ *
+ * The session snapshot alone is not enough, because `cardEntry` and
+ * `pendingWager` belong to the coup that has NOT happened yet, and the
+ * undoable actions divide into two kinds:
+ *
+ *   - Those that CONSUME them. Recording a coup puts the cards into the
+ *     coup and settles the wager; a new shoe discards both. Undo has to put
+ *     them back — the coup is being taken back, so its stake returns to the
+ *     table and its cards to the buffer, alongside the shoe the snapshot
+ *     restores. That is what `consumed` carries.
+ *   - Those that never touch them. A typed run of results settles nothing,
+ *     so whatever is pending stays pending. There `consumed` is null and
+ *     undo leaves the two fields exactly as they stand — which matters most
+ *     when they were set AFTER the run: preparing the next hand and then
+ *     spotting a typo in the run must not cost you the wager and cards you
+ *     just entered. Restoring a snapshot taken before the run would.
+ */
+export interface UndoStep {
+  session: SessionState;
+  /** What the undone action took, or null when it took nothing. */
+  consumed: { cardEntry: Rank[]; pendingWager: PlacedWager | null } | null;
+}
+
 export interface AppState {
   session: SessionState;
   /** Snapshots for undo, oldest first. */
-  history: SessionState[];
+  history: UndoStep[];
   /** Cards entered for the coup in progress, for composition tracking. */
   cardEntry: Rank[];
   /** The wager currently on the table, if any. */
@@ -84,14 +111,68 @@ export interface AppState {
    * explain, not a per-visit detail, so it survives a relaunch too.
    */
   adviceReasonsOpen: boolean;
+  /**
+   * The limit the player has been shown and has answered for, or null.
+   *
+   * Crossing a stop-win or a stop-loss raises a modal the player has to
+   * answer before doing anything else, and this is what stops that modal
+   * coming back on the next render, the next coup and the next launch: it
+   * remembers WHICH limit was answered for — the kind AND the number it was
+   * set to — not merely that something was.
+   *
+   * It is kept honest by `syncAcknowledgedStop`, which clears it the moment
+   * the session stops standing at that exact limit — so moving a limit that
+   * has been reached (even to another number the session is still past),
+   * editing the bankroll back inside it, undoing the coup that crossed it
+   * or closing the session all re-arm the interruption. Nothing has to
+   * remember to reset it.
+   */
+  acknowledgedStop: ReachedStop | null;
   screen: Screen;
 }
 
 const HISTORY_LIMIT = 200;
 
+/**
+ * The table the app assumes when it has never been told otherwise.
+ *
+ * These live here rather than in the engine's `DEFAULT_RULES` /
+ * `DEFAULT_BANKROLL` on purpose. Those two describe the textbook game — the
+ * 5% commission table, a round 1000 bankroll — and the engine's pricing
+ * tests are written against them; they are a neutral baseline, not a
+ * statement about what a player in front of this app is sitting at. What
+ * the FIRST LAUNCH should show is a product decision, so it is made here,
+ * in one place, for web and mobile alike.
+ *
+ * Only a first launch reads them. Settings are persisted and every later
+ * session is opened from the settings in hand (see `closeSession`), so
+ * changing a number here never reaches back and overwrites a table someone
+ * has already described to the app.
+ */
+export const INITIAL_RULES: Partial<TableRules> = {
+  // No-commission is the common table now: Banker pays even money and a
+  // Banker win with 6 pays half.
+  bankerSixPayout: 0.5,
+};
+
+export const INITIAL_BANKROLL: Partial<BankrollState> = {
+  bankroll: 3000,
+  startingBankroll: 3000,
+  // One unit is one table minimum. A unit below the minimum cannot be
+  // staked — the advisor clamps every stake up to the floor — which would
+  // leave the ladders counting in a unit the table will not accept.
+  unitSize: 50,
+  tableMin: 50,
+  tableMax: 10_000,
+  // Both are measured as PROFIT from where the session opened, not as a
+  // balance: up 3300, or down 1000.
+  stopWin: 3300,
+  stopLoss: 1000,
+};
+
 export function createInitialState(): AppState {
   return {
-    session: createSession(),
+    session: createSession({ rules: INITIAL_RULES, bankroll: INITIAL_BANKROLL }),
     history: [],
     cardEntry: [],
     pendingWager: null,
@@ -104,6 +185,7 @@ export function createInitialState(): AppState {
     skipNextCoup: false,
     tableMode: "play",
     adviceReasonsOpen: false,
+    acknowledgedStop: null,
     screen: "table",
   };
 }
@@ -127,6 +209,25 @@ export type Action =
       wager?: PlacedWager | null;
       now?: number;
     }
+  | {
+      /**
+       * A run of results typed in at once, e.g. a shoe already in progress
+       * when the player sat down, or the road on the table's display.
+       *
+       * Deliberately NOT a loop of `record-coup`: nothing is staked and no
+       * cards are consumed, because these coups are history rather than
+       * hands the app was asked to call. They fill in the roads, the shoe's
+       * pattern and every replay that reads the coup list, and they leave
+       * the ledger — the bankroll, the ladder and the strategy record's
+       * money — exactly where they were.
+       *
+       * One undo step covers the whole run, which is the only sane answer
+       * for a mis-typed string: a 40-character paste must not take 40
+       * presses of Undo to take back.
+       */
+      type: "record-coups";
+      outcomes: readonly Outcome[];
+    }
   | { type: "undo" }
   | { type: "new-shoe"; now?: number }
   | { type: "reset-session" }
@@ -139,6 +240,8 @@ export type Action =
   | { type: "skip-next-coup"; skip: boolean }
   | { type: "set-table-mode"; mode: TableMode }
   | { type: "set-advice-reasons-open"; open: boolean }
+  /** "I have seen that I am at my limit." Answered per limit, not per coup. */
+  | { type: "acknowledge-stop" }
   | { type: "update-rules"; rules: Partial<TableRules> }
   | { type: "update-bankroll"; bankroll: Partial<BankrollState> }
   | { type: "set-progression"; progression: ProgressionId }
@@ -146,8 +249,23 @@ export type Action =
   | { type: "set-kelly-multiplier"; multiplier: number }
   | { type: "hydrate"; state: AppState };
 
-function remember(state: AppState): SessionState[] {
-  const history = [...state.history, state.session];
+/**
+ * Push an undo step.
+ *
+ * `consumesInputs` says whether the action about to run takes the pending
+ * card entry and wager with it. See `UndoStep`; getting it wrong in either
+ * direction loses somebody's input.
+ */
+function remember(state: AppState, consumesInputs: boolean): UndoStep[] {
+  const history = [
+    ...state.history,
+    {
+      session: state.session,
+      consumed: consumesInputs
+        ? { cardEntry: state.cardEntry, pendingWager: state.pendingWager }
+        : null,
+    },
+  ];
   return history.length > HISTORY_LIMIT ? history.slice(history.length - HISTORY_LIMIT) : history;
 }
 
@@ -314,7 +432,31 @@ function fileShoe(state: AppState, now: number): ArchivedShoe[] {
   return next.length > SHOE_ARCHIVE_LIMIT ? next.slice(next.length - SHOE_ARCHIVE_LIMIT) : next;
 }
 
+/**
+ * Keep the answered-for limit true of the session as it now stands.
+ *
+ * Run after every action rather than unpicked action by action, because
+ * almost everything can move a session off a limit: settling a coup, undoing
+ * one, editing the bankroll or the limits themselves, closing the session,
+ * restoring a payload from storage. Clearing it here means the modal re-arms
+ * for the next crossing without a dozen cases each having to remember to say
+ * so — and the one case that must NOT clear it, answering the modal while
+ * still at the limit, keeps it because both the kind and the number match.
+ */
+function syncAcknowledgedStop(state: AppState): AppState {
+  if (state.acknowledgedStop === null) return state;
+  if (sameStop(reachedStop(state.session), state.acknowledgedStop)) return state;
+  return { ...state, acknowledgedStop: null };
+}
+
 export function reducer(state: AppState, action: Action): AppState {
+  const next = reduceAction(state, action);
+  // An action that changed nothing cannot have moved a limit either, and
+  // returning the same object is what lets React skip the re-render.
+  return next === state ? state : syncAcknowledgedStop(next);
+}
+
+function reduceAction(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "hydrate":
       return action.state;
@@ -360,6 +502,15 @@ export function reducer(state: AppState, action: Action): AppState {
     case "set-advice-reasons-open":
       return { ...state, adviceReasonsOpen: action.open };
 
+    case "acknowledge-stop": {
+      // Recorded as the limit actually standing, so that answering for a
+      // stop-loss does not also silently answer for the stop-win met later,
+      // nor for a different number this one is moved to afterwards.
+      const stop = reachedStop(state.session);
+      if (stop === null || sameStop(stop, state.acknowledgedStop)) return state;
+      return { ...state, acknowledgedStop: stop };
+    }
+
     case "skip-next-coup":
       return {
         ...state,
@@ -381,7 +532,9 @@ export function reducer(state: AppState, action: Action): AppState {
         session.firstWagerAt ?? (settlement ? (action.now ?? Date.now()) : null);
       return {
         ...state,
-        history: remember(state),
+        // The cards went into the coup and the wager settled, so undo has
+        // to hand both back.
+        history: remember(state, true),
         session: { ...session, firstWagerAt },
         cardEntry: [],
         pendingWager: null,
@@ -391,16 +544,38 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     }
 
+    case "record-coups": {
+      if (action.outcomes.length === 0) return state;
+      let session = state.session;
+      for (const outcome of action.outcomes) {
+        // No wager, so `applyCoup` leaves the bankroll and the ladder alone
+        // and appends a road-only record.
+        session = applyCoup(session, { outcome }, null).session;
+      }
+      return {
+        ...state,
+        // Nothing here settles a wager or eats a card, so the undo step
+        // consumes nothing and taking the run back leaves whatever is
+        // pending alone — including inputs entered after the run.
+        history: remember(state, false),
+        session,
+        // `cardEntry` and `pendingWager` belong to the coup still to come,
+        // and none of these settled it, so both are left standing.
+      };
+    }
+
     case "undo": {
       const previous = state.history[state.history.length - 1];
       if (!previous) return state;
       return {
         ...state,
-        // Not `previous` wholesale: that reverts settings changed since.
-        session: undoSession(state.session, previous),
+        // Not `previous.session` wholesale: that reverts settings changed since.
+        session: undoSession(state.session, previous.session),
         history: state.history.slice(0, -1),
-        cardEntry: [],
-        pendingWager: null,
+        // What the undone action consumed, or what stands now if it
+        // consumed nothing. See `UndoStep`.
+        cardEntry: previous.consumed ? previous.consumed.cardEntry : state.cardEntry,
+        pendingWager: previous.consumed ? previous.consumed.pendingWager : state.pendingWager,
         lastSettlement: null,
       };
     }
@@ -412,7 +587,9 @@ export function reducer(state: AppState, action: Action): AppState {
       // where this shoe's road starts moves.
       return {
         ...state,
-        history: remember(state),
+        // A new shoe throws the pending inputs away below, so undo puts
+        // them back.
+        history: remember(state, true),
         session: {
           ...state.session,
           shoe: createShoe(state.session.rules.decks),

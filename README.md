@@ -50,7 +50,7 @@ Node 20+ (developed on 22).
 
 | Screen | What it answers |
 |---|---|
-| **Table** | What to bet, how much, and what it costs. Records each coup, tracks the bankroll, and prices all eight bets. |
+| **Table** | What to bet, how much, and what it costs. Records each coup — tapped, typed on the **P / B / T** keys, or pasted in as a run like `BPPBT` — tracks the bankroll, and prices all eight bets. |
 | **Roads** | Bead plate, big road (with the dragon tail), big eye boy, small road, cockroach pig, and "ask the road". |
 | **Simulate** | Plays a staking plan out thousands of times: how often you finish ahead, how bad the bad night is, and what edge you actually paid. |
 | **History** | Every closed session, and the lifetime total. One session is luck; the lifetime cost is where the edge shows up. |
@@ -179,6 +179,48 @@ Both clients are at feature parity. The bankroll curve's geometry comes from
 `buildSparkline` in `app-core`, so web (inline `<svg>`) and mobile
 (`react-native-svg`) draw the identical shape for identical numbers.
 
+## Recording a coup
+
+Three ways, all landing in the same ledger:
+
+- **P / B / T** in the docked row at the bottom of the Table tab, with the
+  pair and card-count chips above them for the coup being recorded.
+- **The P, B and T keys**, which do exactly what those buttons do. They stand
+  down while you are typing in a field, while a shortcut key is held, and
+  while a limit is waiting to be answered.
+- **A run of results** — `BPPBT`, `b p p b t`, `B-P-P-B` — typed into "Type a
+  run of results" on the Table tab, for a shoe that was already going when you
+  sat down. Nothing is staked on those and the bankroll does not move: they
+  are history, not hands the app was asked to call, so they fill in the road
+  and the replays only. One **Undo** takes the whole run back, and a character
+  that is not a result is reported rather than quietly dropped.
+
+## What a fresh install assumes
+
+A no-commission table, 8 decks, 3000 bankroll staked in units of the 50 table
+minimum, a ceiling of 10,000, and limits at +3300 and −1000 (both measured as
+profit from where the session opened). They live in one place,
+`INITIAL_RULES` / `INITIAL_BANKROLL` in `packages/app-core/src/reducer.ts`,
+and they are read on a first launch only — settings you have made are
+persisted and are never overwritten by a later build changing its mind.
+
+The engine's own `DEFAULT_RULES` and `DEFAULT_BANKROLL` are a different thing
+and deliberately unchanged: the textbook 5%-commission game its pricing tests
+are written against.
+
+## Hitting a limit
+
+Reaching your stop-win or stop-loss raises a dialog that covers the screen and
+has to be answered — close the session, or keep playing — because a limit is
+set in advance precisely by the person who will not want it when it arrives.
+It is asked once per limit, not once per coup: answering it stands until the
+session moves off that limit, and it survives a relaunch. Moving the limit,
+correcting the balance, undoing the coup that crossed it or closing the
+session all re-arm it.
+
+The advisor still refuses to size a stake past a limit either way. Keeping
+playing changes nothing except that you were asked.
+
 ## Sessions, money and history
 
 A **session** is one sitting. Closing it files it under History with what it
@@ -208,6 +250,9 @@ your own numbers is more convincing than being told it will.
 
 - **No cloud sync.** Everything is on one device. Clearing site data or
   uninstalling takes the history with it, and there is no export yet.
+- **The mobile client has not caught up.** The Expo app shares the reducer, so
+  it opens with the same table and can hold the same run of results, but the
+  keyboard entry, the run box and the limit dialog are web-only so far.
 - **Card tracking is manual and optional.** Skipping it is not a degraded mode:
   unseen cards leave the shoe in the proportions it already holds, so the
   untracked numbers are the correct estimate. Tracking sharpens them by a

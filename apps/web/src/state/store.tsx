@@ -3,11 +3,14 @@ import {
   aggregateStrategyRecord,
   aggregateSystemRecord,
   isReplayableBet,
+  reachedStop,
   resolveTableCall,
+  sameStop,
   lifetimeStats,
   replayStrategies,
   type LifetimeStats,
   type MoneyFormatter,
+  type StopKind,
   type StrategyRecord,
   type StrategyReplay,
   type SystemRecord,
@@ -22,6 +25,7 @@ import {
   type Advice,
   type RoadSet,
   type RoadSummary,
+  type SessionState,
   type SessionStats,
   type SystemRun,
 } from "@ba-predict/engine";
@@ -281,6 +285,30 @@ export function useTableCall(): TableCall {
       tableMode,
     ],
   );
+}
+
+/**
+ * The limit the player has hit and has not yet answered for, if any.
+ *
+ * Null both when no limit is reached and when the one that is reached has
+ * already been answered — so a component can render it directly and the
+ * dialog does not come back on every coup played past a stop-loss the
+ * player has already decided to keep playing through.
+ */
+export function usePendingStop(): {
+  kind: StopKind;
+  /** The limit itself, for quoting back what was set. */
+  limit: number;
+  session: SessionState;
+} | null {
+  const { session, acknowledgedStop } = useAppState();
+  return useMemo(() => {
+    const reached = reachedStop(session);
+    // Same kind AND same number: a limit moved to another value the session
+    // is still past has not been answered for.
+    if (reached === null || sameStop(reached, acknowledgedStop)) return null;
+    return { ...reached, session };
+  }, [session, acknowledgedStop]);
 }
 
 export function useLifetime(): LifetimeStats {

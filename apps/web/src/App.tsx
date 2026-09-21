@@ -3,6 +3,7 @@ import RecordDock from "./components/RecordDock";
 import HistoryScreen from "./screens/HistoryScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import SimulatorScreen from "./screens/SimulatorScreen";
+import StopDialog from "./components/StopDialog";
 import TableScreen from "./screens/TableScreen";
 import { useAppState, useDispatch } from "./state/store";
 import type { Screen } from "@ba-predict/app-core";
@@ -72,6 +73,10 @@ export default function App() {
           ))}
         </nav>
       </div>
+
+      {/* Last, so it paints over everything — including the dock, whose
+          buttons must not be reachable while a limit is being answered. */}
+      <StopDialog />
     </div>
   );
 }
