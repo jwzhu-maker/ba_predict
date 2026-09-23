@@ -634,7 +634,7 @@ describe("Reverse Streak 4 Martingale", () => {
       defaults: REVERSE_STREAK_FOUR_MARTINGALE_CONFIG,
     });
     expect(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG).toMatchObject({
-      baseStake: 100,
+      baseStake: 50,
       maxLadderSteps: 4,
       staking: "martingale",
       recoveryWins: 2,
@@ -644,21 +644,21 @@ describe("Reverse Streak 4 Martingale", () => {
   });
 
   it("doubles after each loss and drops back to one unit on a win", () => {
-    expect(stakes("LLWLW")).toEqual([100, 200, 400, 100, 200]);
-    expect(martingale("LLW").next).toMatchObject({ stake: 100, ladderStep: 1, holdNet: null });
+    expect(stakes("LLWLW")).toEqual([50, 100, 200, 50, 100]);
+    expect(martingale("LLW").next).toMatchObject({ stake: 50, ladderStep: 1, holdNet: null });
   });
 
   it("holds at 8 units after losing the fourth step, until two net wins", () => {
     // 1, 2, 4, 8 all lose; then 8 is held: W (+1), L (0), W (+1), W (+2) → back to 1.
     expect(stakes("LLLL" + "WLWW" + "L")).toEqual([
-      100, 200, 400, 800, 800, 800, 800, 800, 100,
+      50, 100, 200, 400, 400, 400, 400, 400, 50,
     ]);
   });
 
   it("reports the hold on the next hand", () => {
-    expect(martingale("LLLLW").next).toMatchObject({ stake: 800, ladderStep: 4, holdNet: 1 });
-    expect(martingale("LLLLL").next).toMatchObject({ stake: 800, holdNet: -1 });
-    expect(martingale("LLLLWW").next).toMatchObject({ stake: 100, ladderStep: 1, holdNet: null });
+    expect(martingale("LLLLW").next).toMatchObject({ stake: 400, ladderStep: 4, holdNet: 1 });
+    expect(martingale("LLLLL").next).toMatchObject({ stake: 400, holdNet: -1 });
+    expect(martingale("LLLLWW").next).toMatchObject({ stake: 50, ladderStep: 1, holdNet: null });
   });
 
   it("stops for the rest of the shoe once wins exceed losses by eight", () => {
@@ -686,9 +686,9 @@ describe("Reverse Streak 4 Martingale", () => {
   it("clips a held stake to the table maximum", () => {
     const result = run(shoeFromResults("LLLL"), {
       system: "reverse-streak-4-martingale",
-      tableMax: 500,
+      tableMax: 300,
     });
-    expect(result.next).toMatchObject({ stake: 500, requestedStake: 800, clipped: true });
+    expect(result.next).toMatchObject({ stake: 300, requestedStake: 400, clipped: true });
     expect(result.clippedBets).toBe(1);
   });
 

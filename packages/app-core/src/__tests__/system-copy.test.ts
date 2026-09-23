@@ -362,7 +362,7 @@ describe("Reverse Streak 4 Martingale copy", () => {
   });
 
   it("tops out at eight units", () => {
-    expect(topStake(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG)).toBe(800);
+    expect(topStake(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG)).toBe(400);
   });
 
   it("names the doubling step, then the hold", () => {

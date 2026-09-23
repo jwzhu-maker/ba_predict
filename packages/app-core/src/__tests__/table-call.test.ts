@@ -327,7 +327,7 @@ describe("the call under the Martingale system", () => {
 
   it("stakes eight units after three losses", () => {
     const call = resolveTableCall({ ...base, run: martingale(`${WARMUP}PPP`), bankroll: 5000 });
-    expect(call).toMatchObject({ source: "system", bet: "banker", amount: 800, stakes: true });
+    expect(call).toMatchObject({ source: "system", bet: "banker", amount: 400, stakes: true });
   });
 
   it("stops staking once it is eight hands up", () => {
