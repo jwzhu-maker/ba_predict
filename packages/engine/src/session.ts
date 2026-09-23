@@ -212,6 +212,9 @@ export function applyCoup(
     outcome: coup.outcome,
     playerPair: coup.playerPair ?? false,
     bankerPair: coup.bankerPair ?? false,
+    ...(coup.outcome === "banker" && coup.bankerWinOnSix !== undefined
+      ? { bankerWinOnSix: coup.bankerWinOnSix }
+      : {}),
     ...(wager && settlement
       ? {
           wager: {

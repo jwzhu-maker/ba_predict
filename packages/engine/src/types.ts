@@ -115,6 +115,12 @@ export interface CoupRecord {
   outcome: Outcome;
   playerPair: boolean;
   bankerPair: boolean;
+  /**
+   * Whether Banker won on a total of 6, when the player said so. Only
+   * recorded for a Banker result; absent otherwise, and on coups restored
+   * from the shoe archive, whose encoding does not carry it.
+   */
+  bankerWinOnSix?: boolean;
   /** The wager placed on this coup, if any. */
   wager?: {
     bet: BetType;

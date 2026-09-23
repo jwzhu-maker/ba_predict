@@ -227,6 +227,9 @@ export function useSystemRun(): { run: SystemRun; finished: boolean } {
         system: activeSystem,
         rules: session.rules,
         tableMax: session.bankroll.tableMax > 0 ? session.bankroll.tableMax : null,
+        // A stake under the minimum cannot be placed, so the live run treats
+        // it as unplaced: it moves neither the ladder nor the stop-win.
+        tableMin: session.bankroll.tableMin > 0 ? session.bankroll.tableMin : null,
         // Only the NEXT bet is judged against the balance; the replay behind
         // it is hindsight and must not be re-cut to today's money.
         bankroll: session.bankroll.bankroll,
@@ -239,6 +242,7 @@ export function useSystemRun(): { run: SystemRun; finished: boolean } {
     session.previousShoeStartIndex,
     session.rules,
     session.bankroll.tableMax,
+    session.bankroll.tableMin,
     session.bankroll.bankroll,
   ]);
 }

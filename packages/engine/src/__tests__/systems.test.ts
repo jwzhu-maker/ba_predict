@@ -773,3 +773,52 @@ describe("Reverse Streak 4 Martingale under a table maximum", () => {
     expect(result.next).toMatchObject({ stake: 50, holdShortfall: null });
   });
 });
+
+describe("Reverse Streak 4 Martingale, fifth review", () => {
+  const martingale = (results: string, extra = {}) =>
+    run(shoeFromResults(results), { system: "reverse-streak-4-martingale", ...extra });
+
+  it("treats a stake under the table minimum as unplaced", () => {
+    // A 100 minimum blocks the 50 opener: a loss there must not climb to 100.
+    const result = martingale("LLLW", { tableMin: 100 });
+    expect(result.bets).toBe(0);
+    expect(result.hands.slice(12).every((hand) => hand.skipped === "below-minimum")).toBe(true);
+    expect(result.next).toMatchObject({ stake: 50, bet: "banker" });
+    expect(result.targetReachedAt).toBeNull();
+  });
+
+  it("holds a top-stake win that does not recover the climb", () => {
+    // 25% commission: -50 -100 -200 then +300 on the 400 win is -50.
+    const rules = { ...DEFAULT_RULES, bankerCommission: 0.25 };
+    const result = runBettingSystem({
+      coups: coups(shoeFromResults("LLLW")),
+      rules,
+      system: "reverse-streak-4-martingale",
+    });
+    expect(result.next).toMatchObject({ stake: 400, ladderStep: 4 });
+    expect(result.next.holdShortfall).toBeCloseTo(50, 6);
+  });
+
+  it("still resets on a top-stake win that does recover", () => {
+    // Default 5%: -350 then +380 is ahead.
+    expect(martingale("LLLW").next).toMatchObject({ stake: 50, holdNet: null });
+  });
+
+  it("settles a no-commission Banker win on 6 from the recorded answer", () => {
+    // Four Banker losses, then two Banker wins at 400 on a no-commission
+    // table, one of them on 6 (pays half): -750 + 400 + 200 = -150.
+    const noCommission = { ...DEFAULT_RULES, bankerCommission: 0, bankerSixPayout: 0.5 };
+    const base = coups(shoeFromResults("LLLLWW"));
+    const withSix = base.map((coup, index) =>
+      index === base.length - 1 ? { ...coup, bankerWinOnSix: true } : { ...coup, bankerWinOnSix: false },
+    );
+    const exact = runBettingSystem({
+      coups: withSix.map((coup) => (coup.outcome === "banker" ? coup : { ...coup, bankerWinOnSix: undefined })),
+      rules: noCommission,
+      system: "reverse-streak-4-martingale",
+    });
+    expect(exact.approximate).toBe(false);
+    expect(exact.next).toMatchObject({ stake: 400 });
+    expect(exact.next.holdShortfall).toBeCloseTo(150, 6);
+  });
+});

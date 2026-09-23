@@ -193,7 +193,12 @@ export function bettingSystemById(id: BettingSystemId | null | undefined): Betti
 }
 
 /** Why a hand carried no bet. */
-export type SystemSkipReason = "warm-up" | "group-over" | "past-last-hand" | "target-reached";
+export type SystemSkipReason =
+  | "warm-up"
+  | "group-over"
+  | "past-last-hand"
+  | "target-reached"
+  | "below-minimum";
 
 /** One hand of the tie-free sequence, and what the system did with it. */
 export interface SystemHand {
@@ -426,7 +431,16 @@ function advanceStake(
     return;
   }
   if (won) {
-    // A win below the top ends the climb.
+    const atTop = state.level + 1 >= config.maxLadderSteps;
+    if (atTop && state.climbProfit < -1e-9) {
+      // A win on the top stake that still leaves the climb behind (a high
+      // Banker commission, or a cut stake) has not recovered it: hold the
+      // top stake, with the win counted, until the money is back too.
+      state.holding = true;
+      state.holdNet = config.recoveryWins ?? 2;
+      return;
+    }
+    // Otherwise a win ends the climb.
     Object.assign(state, FRESH_STAKE);
   } else if (state.level + 1 < config.maxLadderSteps) {
     state.level += 1;
@@ -485,6 +499,12 @@ export interface RunBettingSystemOptions {
   /** Table ceiling in currency. A stake above it is clipped. Null = no ceiling. */
   tableMax?: number | null;
   /**
+   * Table floor in currency. A stake below it cannot be placed, so that
+   * hand is sat out and moves nothing — the ladder, the hold and the
+   * stop-win all carry on as if it had not been dealt. Null = no floor.
+   */
+  tableMin?: number | null;
+  /**
    * Money available for the NEXT bet, used only to flag an unaffordable one.
    *
    * Deliberately not applied to the replay: that is hindsight over a shoe
@@ -534,7 +554,7 @@ function resolveConfig(
 export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
   const definition = bettingSystemById(options.system);
   const config = resolveConfig(definition.defaults, options.config);
-  const { rules, tableMax = null, bankroll = null } = options;
+  const { rules, tableMax = null, tableMin = null, bankroll = null } = options;
   const { hands: sequence, tiesRemoved } = tieFreeHands(options.coups);
 
   const hands: SystemHand[] = [];
@@ -642,20 +662,39 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
 
     const wanted = askFor(config, stakeState);
     const stake = tableMax === null ? wanted : Math.min(wanted, tableMax);
+    if (tableMin !== null && stake < tableMin - 1e-9) {
+      hands.push({
+        hand,
+        sourceIndex: entry.sourceIndex,
+        outcome: entry.outcome,
+        group,
+        step,
+        bet: null,
+        skipped: "below-minimum",
+        referenceHand,
+        stake: 0,
+        result: null,
+        profit: 0,
+        balance,
+      });
+      continue;
+    }
     if (stake < wanted - 1e-9) clippedBets += 1;
 
     const settlement = settleWager(
       { bet: side, amount: stake },
-      // `CoupRecord` carries outcome and the two pair flags and nothing
-      // else, so a Banker leg on a no-commission table always comes back
-      // `unsettled` here — the "slightly generous" caveat the run card
-      // shows. Fixing that means persisting `bankerWinOnSix` on the coup,
-      // which the shoe archive's one-character-per-coup encoding cannot
-      // carry as it stands. Deliberately not done here.
+      // A live coup carries `bankerWinOnSix` when the player answered it,
+      // so a no-commission Banker leg settles exactly — which matters now
+      // that the Martingale's recovery test reads this money. Coups restored
+      // from the shoe archive do not carry it, and those legs still come
+      // back `unsettled`: the run card's "slightly generous" caveat.
       {
         outcome: entry.outcome,
         playerPair: entry.coup.playerPair,
         bankerPair: entry.coup.bankerPair,
+        ...(entry.coup.bankerWinOnSix !== undefined
+          ? { bankerWinOnSix: entry.coup.bankerWinOnSix }
+          : {}),
       },
       rules,
     );
