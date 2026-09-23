@@ -106,6 +106,12 @@ export interface TableCallInput {
   skipped: boolean;
   /** Money left, so an unaffordable call can be refused. */
   bankroll: number;
+  /**
+   * The table's minimum bet. A system's stake is fixed by its rule, so one
+   * below the minimum cannot be placed and is refused rather than raised.
+   * Omitted means no minimum.
+   */
+  tableMin?: number;
   /** "observe" keeps score without ever staking. */
   mode: TableMode;
 }
@@ -223,7 +229,7 @@ function pointAt(input: TableCallInput): TableCall {
 
 export function resolveTableCall(input: TableCallInput): TableCall {
   const call = pointAt(input);
-  const { advice, bankroll, mode } = input;
+  const { advice, bankroll, mode, tableMin = 0 } = input;
 
   if (!call.stakes || call.bet === null) return call;
 
@@ -238,6 +244,8 @@ export function resolveTableCall(input: TableCallInput): TableCall {
       ? "Observing — recording results keeps score without staking anything."
       : unaffordable
         ? "More than your bankroll has left, so nothing will be staked."
+        : call.source === "system" && call.amount < tableMin - 1e-9
+          ? "Below the table minimum, so nothing will be staked. Raise the system's unit or lower the minimum in Settings."
         : advice.action === "stop"
           ? "Your stop is reached, so nothing will be staked."
           : advice.action === "shuffle"

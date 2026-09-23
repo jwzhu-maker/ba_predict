@@ -649,10 +649,30 @@ describe("Reverse Streak 4 Martingale", () => {
   });
 
   it("holds at 8 units after losing the fourth step, until two net wins", () => {
-    // 1, 2, 4, 8 all lose; then 8 is held: W (+1), L (0), W (+1), W (+2) → back to 1.
-    expect(stakes("LLLL" + "WLWW" + "L")).toEqual([
-      50, 100, 200, 400, 400, 400, 400, 400, 50,
+    // 1, 2, 4, 8 all lose (-750); two Banker wins at 8 pay +760 → back to 1.
+    expect(stakes("LLLL" + "WW" + "L")).toEqual([50, 100, 200, 400, 400, 400, 50]);
+  });
+
+  it("keeps holding past two net wins until the climb's money is back", () => {
+    // W, L, W, W is +2 net, but Banker commission leaves the climb at -10
+    // (-750 + 380 - 400 + 380 + 380), so the stake stays at 8 for one more.
+    expect(stakes("LLLL" + "WLWW" + "W" + "L")).toEqual([
+      50, 100, 200, 400, 400, 400, 400, 400, 400, 50,
     ]);
+    expect(martingale("LLLLWLWW").next).toMatchObject({ stake: 400, holdNet: 2 });
+    expect(martingale("LLLLWLWW").next.holdShortfall).toBeCloseTo(10, 6);
+  });
+
+  it("does not declare recovery at a high commission", () => {
+    // 25% commission: two Banker wins at 400 pay 600, short of the 750 lost.
+    const rules = { ...DEFAULT_RULES, bankerCommission: 0.25 };
+    const result = runBettingSystem({
+      coups: coups(shoeFromResults("LLLLWW")),
+      rules,
+      system: "reverse-streak-4-martingale",
+    });
+    expect(result.next).toMatchObject({ stake: 400, holdNet: 2 });
+    expect(result.next.holdShortfall).toBeCloseTo(150, 6);
   });
 
   it("reports the hold on the next hand", () => {
@@ -748,7 +768,7 @@ describe("Reverse Streak 4 Martingale under a table maximum", () => {
     expect(clipped("LLLLWWW").next).toMatchObject({ stake: 50, holdNet: null, holdShortfall: null });
   });
 
-  it("keeps the two-win rule when nothing was cut", () => {
+  it("resets on two wins when nothing was cut and they cover the climb", () => {
     const result = run(shoeFromResults("LLLLWW"), { system: "reverse-streak-4-martingale" });
     expect(result.next).toMatchObject({ stake: 50, holdShortfall: null });
   });

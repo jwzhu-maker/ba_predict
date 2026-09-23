@@ -163,7 +163,7 @@ export function describeSystemRules(config: BettingSystemConfig, money: SystemCo
   const recovery = config.recoveryWins ?? 2;
   const ladder =
     config.staking === "martingale"
-      ? `Every hand after that carries a stake of ${martingaleUnits(config)} in turn, one unit being ${money.format(config.baseStake)}: double after each loss, back to one unit after a win below the top. A loss at ${money.format(topStake(config))} holds the stake there — a win while holding does not reset it — until it is ${recovery} net win${recovery === 1 ? "" : "s"} up at that stake, then it drops to one unit. If the table maximum cuts a stake, the hold also waits until the losses are actually won back.`
+      ? `Every hand after that carries a stake of ${martingaleUnits(config)} in turn, one unit being ${money.format(config.baseStake)}: double after each loss, back to one unit after a win below the top. A loss at ${money.format(topStake(config))} holds the stake there — a win while holding does not reset it — until it is ${recovery} net win${recovery === 1 ? "" : "s"} up at that stake, then it drops to one unit — once the climb's losses are actually won back, which a table maximum or Banker commission can delay.`
       : config.groupsGateBetting
     ? `Groups of ${config.groupSize}, opening at ${money.format(config.baseStake)} and adding ${money.format(config.stakeStep)} after each win, stopping the group on its first loss.`
     : `Every hand after that carries a stake: ${money.format(config.baseStake)}, adding ${money.format(config.stakeStep)} after each win up to ${money.format(topStake(config))}, and back to ${money.format(config.baseStake)} after a ${ordinal(config.maxLadderSteps)} straight win or after any loss.`;
@@ -286,8 +286,8 @@ export function nextHandDetail(run: SystemRun): string | null {
 
   const recovery = config.recoveryWins ?? 2;
   const rung =
-    next.holdShortfall !== null && next.holdNet !== null && next.holdNet >= recovery
-      ? "holding the top stake until the cut climb's losses are won back"
+    next.holdShortfall !== null && next.holdShortfall > 0 && next.holdNet !== null && next.holdNet >= recovery
+      ? "holding the top stake until the climb's losses are won back"
       : next.holdNet !== null
       ? `holding the top stake, ${next.holdNet >= 0 ? "+" : ""}${next.holdNet} of +${recovery} net to reset`
       : config.staking === "martingale"

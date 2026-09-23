@@ -357,3 +357,19 @@ describe("a skipped coup", () => {
     expect(call.skippedSuggestion).toBeNull();
   });
 });
+
+describe("the table minimum", () => {
+  it("refuses a system stake below it rather than staking it", () => {
+    const martingale = runBettingSystem({
+      coups: coups(WARMUP),
+      rules: DEFAULT_RULES,
+      system: "reverse-streak-4-martingale" as const,
+    });
+    const call = resolveTableCall({ ...base, run: martingale, tableMin: 100 });
+    expect(call).toMatchObject({ bet: "banker", amount: 50, stakes: false });
+    expect(call.blockedReason).toContain("table minimum");
+    expect(callToWager(call)).toBeNull();
+    // At or above the minimum it stakes as usual.
+    expect(resolveTableCall({ ...base, run: martingale, tableMin: 50 }).stakes).toBe(true);
+  });
+});

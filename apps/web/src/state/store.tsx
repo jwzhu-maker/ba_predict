@@ -272,6 +272,7 @@ export function useTableCall(): TableCall {
         manualWager: pendingWager,
         skipped: skipNextCoup,
         bankroll: session.bankroll.bankroll,
+        tableMin: session.bankroll.tableMin,
         mode: tableMode,
       }),
     [
@@ -282,6 +283,7 @@ export function useTableCall(): TableCall {
       pendingWager,
       skipNextCoup,
       session.bankroll.bankroll,
+      session.bankroll.tableMin,
       tableMode,
     ],
   );

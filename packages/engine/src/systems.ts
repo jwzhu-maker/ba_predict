@@ -43,9 +43,10 @@ export type BettingSystemId = "reverse-12" | "reverse-streak-4" | "reverse-strea
  * win, for `maxLadderSteps` stakes (1, 2, 4, 8 at four). A loss at the top
  * stake does not double again; the stake holds there until `recoveryWins`
  * net wins at that stake have been banked — two wins at 8 pay back the
- * 1 + 2 + 4 + 8 the climb lost — and only then returns to the base. If the
- * table maximum cut any stake in the climb, those wins may not pay it back,
- * so the hold then also waits until the climb's money is actually back.
+ * 1 + 2 + 4 + 8 the climb lost — and only then returns to the base. It
+ * also waits until the climb's money is actually back, for the cases where
+ * two wins do not pay it: a stake cut by the table maximum, Banker
+ * commission, or a loss inside the hold.
  */
 export type SystemStaking = "ladder" | "martingale";
 
@@ -286,10 +287,9 @@ export interface SystemNext {
    */
   holdNet: number | null;
   /**
-   * Martingale only, while holding after the table maximum cut a stake in
-   * this climb: how much of the climb's loss is still to win back (0 once
-   * it is back). Null when nothing was cut, since the win count alone then
-   * decides the reset.
+   * Martingale only, while holding at the top stake: how much of the
+   * climb's loss is still to win back (0 once it is back). Null when not
+   * holding.
    */
   holdShortfall: number | null;
 }
@@ -414,13 +414,14 @@ function advanceStake(
   state.climbProfit += profit;
   if (clipped) state.climbClipped = true;
   if (state.holding) {
-    // Counted in wins, as the rule is written: at full stake two net wins
-    // more than cover the climb (8 + 8 > 1 + 2 + 4 + 8). When the table
-    // maximum cut a stake in this climb they may not, so the hold then also
-    // waits until the climb's money is actually back.
+    // Two net wins, as the rule is written, AND the climb's money actually
+    // back — which is the reason for the two wins (8 + 8 > 1 + 2 + 4 + 8).
+    // Usually the wins alone do it; they fall short when the table maximum
+    // cut a stake in the climb, or when Banker commission (or a loss inside
+    // the hold) eats into what they paid.
     state.holdNet += won ? 1 : -1;
     const winsDone = state.holdNet >= (config.recoveryWins ?? 2);
-    const moneyBack = !state.climbClipped || state.climbProfit >= -1e-9;
+    const moneyBack = state.climbProfit >= -1e-9;
     if (winsDone && moneyBack) Object.assign(state, FRESH_STAKE);
     return;
   }
@@ -820,9 +821,6 @@ function describeNext(
     clipped: stake < requestedStake - 1e-9,
     unaffordable: bankroll !== null && stake > bankroll + 1e-9,
     holdNet: isMartingale(config) && state.holding ? state.holdNet : null,
-    holdShortfall:
-      isMartingale(config) && state.holding && state.climbClipped
-        ? Math.max(0, -state.climbProfit)
-        : null,
+    holdShortfall: isMartingale(config) && state.holding ? Math.max(0, -state.climbProfit) : null,
   };
 }

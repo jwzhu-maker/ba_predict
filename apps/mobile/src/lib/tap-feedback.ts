@@ -42,9 +42,13 @@ export function tapFeedback(sound: boolean): void {
   const tick = tickPlayer();
   if (!tick) return;
   try {
-    // Rewind first so a quick second tap replays rather than being ignored.
-    void tick.seekTo(0).catch(() => undefined);
-    tick.play();
+    // Rewind first so a second tap replays rather than being ignored, and
+    // play only once the rewind has landed — playing straight away can
+    // start from the end of the last tick and make no sound.
+    void tick
+      .seekTo(0)
+      .catch(() => undefined)
+      .then(() => tick.play());
   } catch {
     // As above.
   }

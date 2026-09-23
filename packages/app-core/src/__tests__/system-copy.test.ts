@@ -397,9 +397,9 @@ describe("Reverse Streak 4 Martingale copy", () => {
       system: "reverse-streak-4-martingale" as const,
       tableMax: 300,
     });
-    expect(nextHandDetail(run)).toContain("until the cut climb's losses are won back");
+    expect(nextHandDetail(run)).toContain("until the climb's losses are won back");
     expect(describeSystemRules(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG, money)).toContain(
-      "If the table maximum cuts a stake, the hold also waits until the losses are actually won back.",
+      "once the climb's losses are actually won back",
     );
   });
 
