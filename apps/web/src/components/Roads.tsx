@@ -6,7 +6,7 @@ import {
   type DerivedMark,
   type RoadSet,
 } from "@ba-predict/engine";
-import { useMemo } from "react";
+import { Children, useLayoutEffect, useMemo, useRef } from "react";
 import { Card } from "./Primitives";
 
 const ROWS = 6;
@@ -20,8 +20,20 @@ function GridShell({
   children: React.ReactNode;
   label: string;
 }) {
+  // Boards read left to right and grow at the right, so the newest marks
+  // are the ones that matter. Whenever a mark or a column is added — and on
+  // first draw, e.g. coming back to the tab — the scroller jumps to its
+  // right edge. Scrolling back to read older columns is left alone until
+  // the board next grows.
+  const scroller = useRef<HTMLDivElement>(null);
+  const marks = Children.count(children);
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    if (element) element.scrollLeft = element.scrollWidth;
+  }, [columns, marks]);
+
   return (
-    <div className="road-scroll">
+    <div className="road-scroll" ref={scroller}>
       <div
         className="road-grid"
         role="img"

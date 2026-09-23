@@ -6,6 +6,7 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-
 import type { Screen } from "@ba-predict/app-core";
 import BankrollHeader from "./src/components/BankrollHeader";
 import RecordDock from "./src/components/RecordDock";
+import { pageScrollRef } from "./src/lib/reveal-road";
 import HistoryScreen from "./src/screens/HistoryScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import SimulatorScreen from "./src/screens/SimulatorScreen";
@@ -82,6 +83,7 @@ function Shell() {
       </View>
 
       <ScrollView
+        ref={pageScrollRef}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"

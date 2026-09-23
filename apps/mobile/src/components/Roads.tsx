@@ -8,7 +8,7 @@ import {
   type Outcome,
   type RoadSet,
 } from "@ba-predict/engine";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { ROAD_CELL, usePalette, type Palette } from "../theme";
 import { Card, Hint } from "./ui";
@@ -70,12 +70,25 @@ function useRoadStyles(p: Palette) {
   );
 }
 
-/** Render a fixed-height board as rows, inside a horizontal scroller. */
+/**
+ * Render a fixed-height board as rows, inside a horizontal scroller.
+ *
+ * Boards grow at the right and the newest marks are the ones that matter,
+ * so whenever the board widens — and on first draw — the scroller jumps to
+ * its right edge. Scrolling back to read older columns is left alone until
+ * the board next widens.
+ */
 function Board({ rows }: { rows: React.ReactNode[][] }) {
   const p = usePalette();
   const s = useRoadStyles(p);
+  const scroller = useRef<ScrollView>(null);
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+    <ScrollView
+      ref={scroller}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: false })}
+    >
       <View style={s.board}>
         {rows.map((cells, row) => (
           <View key={row} style={s.row}>

@@ -6,6 +6,7 @@ export function Card({
   children,
   tone,
   className,
+  id,
 }: {
   title?: string;
   subtitle?: string;
@@ -13,9 +14,12 @@ export function Card({
   tone?: "default" | "warn" | "good";
   /** Extra class, for a card that needs its own sizing or placement. */
   className?: string;
+  /** DOM id, for a card something else scrolls to. */
+  id?: string;
 }) {
   return (
     <section
+      id={id}
       className={`card${tone && tone !== "default" ? ` card-${tone}` : ""}${
         className ? ` ${className}` : ""
       }`}

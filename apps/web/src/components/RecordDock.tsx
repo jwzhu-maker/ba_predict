@@ -1,6 +1,8 @@
 import { betLabel, type Outcome } from "@ba-predict/engine";
 import { useCallback, useEffect, useState } from "react";
 import { callToWager } from "@ba-predict/app-core";
+import { formatUnits } from "../lib/format";
+import { revealRoad } from "../lib/reveal-road";
 import {
   useAppState,
   useDispatch,
@@ -44,10 +46,16 @@ const KEY_OUTCOMES: Record<string, Outcome> = {
  *     recorded, and a pinned button whose inputs are two screens away
  *     records whatever those inputs happened to be left at.
  *
- * Undo and Redo share the top line with the stake, at the far end from the
- * buttons: a mis-tap is noticed the moment it lands, so taking it back has
- * to be as close to hand as the tap was — but small, and a row away, so it
- * is not what the thumb hits while tapping P and B.
+ * The top row is the next bet — side, amount and how many units that is —
+ * because the dock is the one thing on screen wherever the page is
+ * scrolled, and the Bet card that also says it is not. Recording a result
+ * then scrolls "The road" into view, so the page shows the road the result
+ * just extended rather than wherever it was left.
+ *
+ * Undo and Redo share the second line, at the far end from the buttons: a
+ * mis-tap is noticed the moment it lands, so taking it back has to be as
+ * close to hand as the tap was — but small, and rows away, so it is not
+ * what the thumb hits while tapping P and B.
  */
 export default function RecordDock() {
   const { session, pendingWager, cardEntry, history, future } = useAppState();
@@ -57,6 +65,13 @@ export default function RecordDock() {
   // can never disagree about the money that moved.
   const call = useTableCall();
   const settling = pendingWager ?? callToWager(call);
+  // What the app is pointing at, staked or not. When it is not staked (a
+  // skip, observe mode, a stop) it is still shown, marked as such, because
+  // "the rule wants Banker 150 and I am not taking it" is information.
+  const nextBet =
+    settling ?? (call.bet !== null && call.amount > 0 ? { bet: call.bet, amount: call.amount } : null);
+  const unitSize = session.bankroll.unitSize;
+  const units = nextBet && unitSize > 0 ? nextBet.amount / unitSize : null;
   // A limit waiting to be answered blocks the screen; the keys must not be
   // a way around it. The buttons are covered by the dialog, the keys are
   // not attached to anything the dialog can cover.
@@ -100,6 +115,7 @@ export default function RecordDock() {
       setBankerPair(false);
       setCardCount(null);
       setBankerWinOnSix(false);
+      revealRoad();
     },
     [call, dispatch, playerPair, bankerPair, cardCount, bankerWinOnSix, noCommissionTable],
   );
@@ -160,12 +176,35 @@ export default function RecordDock() {
 
   return (
     <div className="record-dock">
+      <p
+        className={`record-dock-next${nextBet ? ` record-dock-next-${nextBet.bet}` : ""}`}
+        aria-live="polite"
+      >
+        <span className="record-dock-label">Next bet</span>
+        {nextBet ? (
+          <>
+            <strong className="record-dock-next-side">{betLabel(nextBet.bet)}</strong>
+            <strong>{money.format(nextBet.amount)}</strong>
+            {units !== null ? (
+              <span
+                className="record-dock-next-units"
+                title={`One unit is ${money.format(unitSize)}`}
+              >
+                = {formatUnits(units)} {units === 1 ? "unit" : "units"}
+              </span>
+            ) : null}
+            {settling ? null : <span className="record-dock-next-off">not staked</span>}
+          </>
+        ) : (
+          <span className="record-dock-next-none">No bet — road only</span>
+        )}
+      </p>
+
       <div className="record-dock-top">
         <p className="record-dock-line">
-          {settling
-            ? `${money.format(settling.amount)} on ${betLabel(settling.bet)}`
-            : "Nothing staked — road only"}
-          {cardEntry.length > 0 ? ` · ${cardEntry.length} cards tracked` : null}
+          {!settling && nextBet ? (call.blockedReason ?? "Recording will not stake it") : null}
+          {!settling && nextBet && cardEntry.length > 0 ? " · " : null}
+          {cardEntry.length > 0 ? `${cardEntry.length} cards tracked` : null}
         </p>
         <div className="record-dock-history">
           <button

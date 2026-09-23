@@ -1,6 +1,7 @@
 import { Card, Stat } from "./Primitives";
 import { AskTheRoad, BeadPlate, BigRoad, DerivedRoad } from "./Roads";
 import { formatPercent } from "../lib/format";
+import { ROAD_CARD_ID } from "../lib/reveal-road";
 import { useRoads } from "../state/store";
 
 /**
@@ -8,7 +9,9 @@ import { useRoads } from "../state/store";
  *
  * Adjacency is the point: recording an outcome and watching the road move are
  * one action to a player, and putting them on separate tabs made you tap away
- * to see the effect of what you just did.
+ * to see the effect of what you just did. Pressing P / B / T in the record
+ * dock scrolls this card into view (see `revealRoad`), and every board
+ * keeps its newest column in view (see `GridShell`).
  */
 export default function ShoeRoads() {
   const { roads, summary } = useRoads();
@@ -16,7 +19,7 @@ export default function ShoeRoads() {
 
   if (summary.total === 0) {
     return (
-      <Card title="The road" subtitle="Fills in as you record results">
+      <Card id={ROAD_CARD_ID} title="The road" subtitle="Fills in as you record results">
         <p className="prose">
           Record a result above and the bead plate, big road and the three derived roads all
           draw here.
@@ -27,7 +30,7 @@ export default function ShoeRoads() {
 
   return (
     <>
-      <Card title="The road" subtitle={`${summary.total} coups this shoe`}>
+      <Card id={ROAD_CARD_ID} title="The road" subtitle={`${summary.total} coups this shoe`}>
         <div className="stat-grid">
           <Stat label="Banker" value={String(summary.bankerWins)} />
           <Stat label="Player" value={String(summary.playerWins)} />

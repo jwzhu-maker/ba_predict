@@ -2,6 +2,8 @@ import { callToWager } from "@ba-predict/app-core";
 import { betLabel, type Outcome } from "@ba-predict/engine";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { formatUnits } from "../lib/format";
+import { revealRoad } from "../lib/reveal-road";
 import { useAppState, useDispatch, useMoney, useTableCall } from "../state/store";
 import { usePalette, type Palette } from "../theme";
 import { Chip } from "./ui";
@@ -24,9 +26,13 @@ import { Chip } from "./ui";
  *     have to be set BEFORE the result is recorded and a pinned button
  *     whose inputs are two screens away records whatever they were left at.
  *
- * Undo and Redo share the top line with the stake, a row away from P / B /
- * T: close enough to fix a mis-tap where it was made, far enough not to be
- * hit while tapping the next result.
+ * The top row is the next bet — side, amount and how many units that is —
+ * because the dock is on screen wherever the page is scrolled and the Bet
+ * card is not. Recording a result then scrolls "The road" into view.
+ *
+ * Undo and Redo share the second line, rows away from P / B / T: close
+ * enough to fix a mis-tap where it was made, far enough not to be hit while
+ * tapping the next result.
  */
 export default function RecordDock() {
   const { session, pendingWager, cardEntry, history, future } = useAppState();
@@ -39,6 +45,20 @@ export default function RecordDock() {
   // the two can never disagree about the money that moved.
   const call = useTableCall();
   const settling = pendingWager ?? callToWager(call);
+  // What the app is pointing at, staked or not; an unstaked call is still
+  // shown, marked as such. See the web dock.
+  const nextBet =
+    settling ?? (call.bet !== null && call.amount > 0 ? { bet: call.bet, amount: call.amount } : null);
+  const unitSize = session.bankroll.unitSize;
+  const units = nextBet && unitSize > 0 ? nextBet.amount / unitSize : null;
+  const sideColour =
+    nextBet?.bet === "player"
+      ? p.player
+      : nextBet?.bet === "banker"
+        ? p.banker
+        : nextBet?.bet === "tie"
+          ? p.tie
+          : p.text;
 
   const [playerPair, setPlayerPair] = useState(false);
   const [bankerPair, setBankerPair] = useState(false);
@@ -73,16 +93,34 @@ export default function RecordDock() {
     setBankerPair(false);
     setCardCount(null);
     setBankerWinOnSix(false);
+    revealRoad();
   };
 
   return (
     <View style={local.dock}>
+      <View style={local.next} accessibilityLiveRegion="polite">
+        <Text style={local.label}>NEXT BET</Text>
+        {nextBet ? (
+          <>
+            <Text style={[local.nextSide, { color: sideColour }]}>{betLabel(nextBet.bet)}</Text>
+            <Text style={local.nextAmount}>{money.format(nextBet.amount)}</Text>
+            {units !== null ? (
+              <Text style={local.nextUnits}>
+                = {formatUnits(units)} {units === 1 ? "unit" : "units"}
+              </Text>
+            ) : null}
+            {settling ? null : <Text style={local.nextOff}>NOT STAKED</Text>}
+          </>
+        ) : (
+          <Text style={local.nextUnits}>No bet — road only</Text>
+        )}
+      </View>
+
       <View style={local.top}>
         <Text style={[local.line, { flex: 1 }]} numberOfLines={1}>
-          {settling
-            ? `${money.format(settling.amount)} on ${betLabel(settling.bet)}`
-            : "Nothing staked — road only"}
-          {cardEntry.length > 0 ? ` · ${cardEntry.length} cards tracked` : ""}
+          {!settling && nextBet ? (call.blockedReason ?? "Recording will not stake it") : ""}
+          {!settling && nextBet && cardEntry.length > 0 ? " · " : ""}
+          {cardEntry.length > 0 ? `${cardEntry.length} cards tracked` : ""}
         </Text>
         {(
           [
@@ -173,6 +211,19 @@ function useLocalStyles(p: Palette) {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: p.border,
       backgroundColor: p.surface,
+    },
+    next: { flexDirection: "row", flexWrap: "wrap", alignItems: "baseline", columnGap: 8 },
+    nextSide: { fontSize: 16, fontWeight: "800" },
+    nextAmount: { color: p.text, fontSize: 16, fontWeight: "700" },
+    nextUnits: { color: p.muted, fontSize: 13 },
+    nextOff: {
+      color: p.muted,
+      fontSize: 10,
+      letterSpacing: 0.5,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: p.border,
+      borderRadius: 999,
+      paddingHorizontal: 6,
     },
     top: { flexDirection: "row", alignItems: "center", gap: 6 },
     line: { color: p.muted, fontSize: 12, fontWeight: "600" },
