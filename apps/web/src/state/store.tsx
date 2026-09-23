@@ -245,6 +245,9 @@ export function useSystemRecord(): SystemRecord {
         system: activeSystem,
         rules: session.rules,
         tableMax: session.bankroll.tableMax > 0 ? session.bankroll.tableMax : null,
+        // The same floor the live run uses, so the two cards agree on which
+        // hands were bets at all.
+        tableMin: session.bankroll.tableMin > 0 ? session.bankroll.tableMin : null,
       }),
     [
       activeSystem,
@@ -253,6 +256,7 @@ export function useSystemRecord(): SystemRecord {
       session.shoeStartIndex,
       session.rules,
       session.bankroll.tableMax,
+      session.bankroll.tableMin,
     ],
   );
 }

@@ -578,7 +578,9 @@ function reduceAction(state: AppState, action: Action): AppState {
         ...state,
         skipNextCoup: action.skip,
         pendingWager: action.skip ? null : state.pendingWager,
-        future: action.skip && state.pendingWager !== null ? [] : state.future,
+        // A skip is a decision about the coup to come; a redo would put a
+        // coup back ahead of it and move the skip onto the hand after.
+        future: action.skip ? [] : state.future,
       };
 
     case "record-coup": {

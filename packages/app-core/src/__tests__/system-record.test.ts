@@ -216,3 +216,12 @@ describe("system record", () => {
     expect(empty.config.groupsGateBetting).toBe(false);
   });
 });
+
+describe("the table minimum in the aggregate record", () => {
+  it("counts no bets the live run would not have placed", () => {
+    const shoe = coups("P".repeat(12) + "PBPBPBPB");
+    const base = { shoes: [], currentShoe: shoe, rules: DEFAULT_RULES, system: "reverse-streak-4-martingale" as const };
+    expect(aggregateSystemRecord(base).bets).toBeGreaterThan(0);
+    expect(aggregateSystemRecord({ ...base, tableMin: 100 }).bets).toBe(0);
+  });
+});

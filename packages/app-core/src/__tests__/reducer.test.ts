@@ -692,6 +692,18 @@ describe("redo", () => {
     ).toHaveLength(0);
   });
 
+  it("is cleared by a skip even with no wager to drop", () => {
+    // An auto-staked coup leaves nothing pending once undone.
+    const undone = play(
+      createInitialState(),
+      { type: "record-coup", wager: { bet: "banker", amount: 50 }, coup: { outcome: "player" } },
+      { type: "undo" },
+    );
+    expect(undone.pendingWager).toBeNull();
+    expect(undone.future).toHaveLength(1);
+    expect(reducer(undone, { type: "skip-next-coup", skip: true }).future).toHaveLength(0);
+  });
+
   it("keeps a ladder re-seeded by a new table maximum", () => {
     const state = play(
       createInitialState(),

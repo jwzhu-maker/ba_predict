@@ -87,6 +87,8 @@ export interface SystemRecordOptions {
   system?: BettingSystemId | null;
   config?: Partial<BettingSystemConfig>;
   tableMax?: number | null;
+  /** Table floor; a stake under it is replayed as unplaced. See `runBettingSystem`. */
+  tableMin?: number | null;
 }
 
 export function aggregateSystemRecord(options: SystemRecordOptions): SystemRecord {
