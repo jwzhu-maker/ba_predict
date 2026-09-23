@@ -80,6 +80,11 @@ export interface TableCall {
   unaffordable: boolean;
   /** Whether the engine's own sizing sentence still describes the stake. */
   engineSizes: boolean;
+  /**
+   * On a skipped coup, what the app would otherwise have pointed at, so the
+   * record dock can still show "Banker 100, not staked". Null otherwise.
+   */
+  skippedSuggestion: { bet: BetType; amount: number } | null;
 }
 
 export interface TableCallInput {
@@ -113,6 +118,7 @@ const IDLE = {
   unaffordable: false,
   engineSizes: false,
   blockedReason: null,
+  skippedSuggestion: null,
 } as const;
 
 /** The instruction, before anything that might refuse to act on it. */
@@ -132,6 +138,7 @@ function pointAt(input: TableCallInput): TableCall {
   }
 
   if (skipped) {
+    const declined = pointAt({ ...input, skipped: false });
     return {
       ...IDLE,
       source: "skipped",
@@ -139,6 +146,10 @@ function pointAt(input: TableCallInput): TableCall {
       amount: 0,
       stakes: false,
       noBetReason: "You are sitting this coup out.",
+      skippedSuggestion:
+        declined.bet !== null && declined.amount > 0
+          ? { bet: declined.bet, amount: declined.amount }
+          : null,
     };
   }
 

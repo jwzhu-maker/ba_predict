@@ -662,13 +662,40 @@ describe("redo", () => {
   it("leaves pending inputs alone when redoing a typed run", () => {
     const state = play(
       createInitialState(),
+      { type: "place-wager", wager: { bet: "player", amount: 100 } },
       { type: "record-coups", outcomes: ["player", "banker"] },
       { type: "undo" },
-      { type: "place-wager", wager: { bet: "player", amount: 100 } },
       { type: "redo" },
     );
     expect(state.session.coups).toHaveLength(2);
     expect(state.pendingWager).toEqual({ bet: "player", amount: 100 });
+  });
+
+  it("is cleared by editing the pending cards or wager", () => {
+    const undone = play(recorded(), { type: "undo" });
+    for (const edit of [
+      { type: "add-card", rank: "5" },
+      { type: "remove-card" },
+      { type: "clear-cards" },
+      { type: "place-wager", wager: { bet: "player", amount: 10 } },
+    ] as const) {
+      expect(reducer(undone, edit).future).toHaveLength(0);
+    }
+  });
+
+  it("keeps a ladder re-seeded by a new table maximum", () => {
+    const state = play(
+      createInitialState(),
+      { type: "set-progression", progression: "martingale" },
+      { type: "place-wager", wager: { bet: "banker", amount: 50 } },
+      { type: "record-coup", coup: { outcome: "player" } },
+      { type: "undo" },
+      // One unit of ceiling: the re-seeded ladder cannot sit at 2 units.
+      { type: "update-bankroll", bankroll: { tableMax: 50 } },
+      { type: "redo" },
+    );
+    expect(state.session.coups).toHaveLength(1);
+    expect(state.session.progression.units).toBe(1);
   });
 
   it("is not persisted", () => {

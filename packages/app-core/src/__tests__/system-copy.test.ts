@@ -385,5 +385,6 @@ describe("Reverse Streak 4 Martingale copy", () => {
     const shape = describeRunShape(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG);
     expect(shape).toContain("a loss doubles the next one");
     expect(shape).not.toContain("ladder resets");
+    expect(shape).toContain("until it gets 8 wins ahead, when it stops for the shoe");
   });
 });

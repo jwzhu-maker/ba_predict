@@ -338,3 +338,17 @@ describe("the call under the Martingale system", () => {
     expect(callToWager(call)).toBeNull();
   });
 });
+
+describe("a skipped coup", () => {
+  it("keeps what it declined, for the dock to show as not staked", () => {
+    const call = resolveTableCall({ ...base, skipped: true });
+    expect(call).toMatchObject({ source: "skipped", bet: null, stakes: false });
+    expect(call.skippedSuggestion).toEqual({ bet: "banker", amount: 10 });
+    expect(callToWager(call)).toBeNull();
+  });
+
+  it("has nothing to keep when the underlying call bets nothing", () => {
+    const call = resolveTableCall({ ...base, run: run("PP"), skipped: true });
+    expect(call.skippedSuggestion).toBeNull();
+  });
+});

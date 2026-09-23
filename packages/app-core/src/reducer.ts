@@ -366,8 +366,13 @@ function restoreSession(current: SessionState, snapshot: SessionState): SessionS
     // restoring it wholesale put a switched-away-from plan back. Switching
     // plans resets the ladder anyway, which is why keeping the current one
     // in that case loses nothing.
+    //
+    // The same goes for a ladder re-seeded by a change to the unit size or
+    // table maximum: its `maxUnits` differs from the snapshot's, and the
+    // snapshot's position was worked out under the old ceiling.
     progression:
-      current.progression.id === snapshot.progression.id
+      current.progression.id === snapshot.progression.id &&
+      current.progressionOptions.maxUnits === snapshot.progressionOptions.maxUnits
         ? snapshot.progression
         : current.progression,
     firstWagerAt: snapshot.firstWagerAt,
@@ -512,22 +517,26 @@ function reduceAction(state: AppState, action: Action): AppState {
     case "set-screen":
       return { ...state, screen: action.screen };
 
+    // Editing the pending cards or wager ends the redo branch: a redo would
+    // otherwise overwrite what was just entered with the inputs from before
+    // the undo.
     case "add-card":
       // Six cards is the most a coup can use.
       if (state.cardEntry.length >= 6) return state;
-      return { ...state, cardEntry: [...state.cardEntry, action.rank] };
+      return { ...state, future: [], cardEntry: [...state.cardEntry, action.rank] };
 
     case "remove-card":
-      return { ...state, cardEntry: state.cardEntry.slice(0, -1) };
+      return { ...state, future: [], cardEntry: state.cardEntry.slice(0, -1) };
 
     case "clear-cards":
-      return { ...state, cardEntry: [] };
+      return { ...state, future: [], cardEntry: [] };
 
     case "place-wager":
       // Placing by hand is a decision to bet, so it cancels a skip; taking
       // the wager back leaves the skip alone.
       return {
         ...state,
+        future: [],
         pendingWager: action.wager,
         skipNextCoup: action.wager ? false : state.skipNextCoup,
       };

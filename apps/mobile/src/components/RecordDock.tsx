@@ -49,7 +49,10 @@ export default function RecordDock() {
   // What the app is pointing at, staked or not; an unstaked call is still
   // shown, marked as such. See the web dock.
   const nextBet =
-    settling ?? (call.bet !== null && call.amount > 0 ? { bet: call.bet, amount: call.amount } : null);
+    settling ??
+    (call.bet !== null && call.amount > 0
+      ? { bet: call.bet, amount: call.amount }
+      : call.skippedSuggestion);
   // Units are counted in whatever is setting the stake: a betting system's
   // own base stake while it is the one speaking ("1, 2, 4, 8 units" is how
   // its rule reads), otherwise the unit size from Settings.
