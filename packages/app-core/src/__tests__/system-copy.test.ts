@@ -358,7 +358,7 @@ describe("Reverse Streak 4 Martingale copy", () => {
     expect(rules).toContain("double after each loss");
     expect(rules).toContain("holds the stake there until 2 net wins");
     expect(rules).toContain("wins outnumber losses by 8");
-    expect(rules).toContain("runs to the end of the shoe");
+    expect(rules).toContain("stops after hand 60");
   });
 
   it("tops out at eight units", () => {

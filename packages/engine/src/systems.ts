@@ -131,15 +131,15 @@ export const REVERSE_STREAK_FOUR_CONFIG: BettingSystemConfig = {
  * whole shoe stops once wins exceed losses by eight.
  *
  * `baseStake` is one unit, in currency: 50, so the stakes run 50, 100, 200
- * and 400. `lastHand` is null: the rule's own stop is the net-eight target,
- * and otherwise it plays to the end of the shoe.
+ * and 400. Like the other two it stops after hand 60, or sooner if it
+ * reaches the net-eight target.
  */
 export const REVERSE_STREAK_FOUR_MARTINGALE_CONFIG: BettingSystemConfig = {
   lookback: 12,
   groupSize: 6,
   baseStake: 50,
   stakeStep: 0,
-  lastHand: null,
+  lastHand: 60,
   groupsGateBetting: false,
   maxLadderSteps: 4,
   staking: "martingale",

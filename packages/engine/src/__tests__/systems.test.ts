@@ -639,7 +639,7 @@ describe("Reverse Streak 4 Martingale", () => {
       staking: "martingale",
       recoveryWins: 2,
       stopAtNetWins: 8,
-      lastHand: null,
+      lastHand: 60,
     });
   });
 
@@ -677,10 +677,13 @@ describe("Reverse Streak 4 Martingale", () => {
     expect(result.targetReachedAt).toBe(24);
   });
 
-  it("plays past hand 60, having no last hand of its own", () => {
+  it("stops after hand 60 like the other systems", () => {
+    // 48 bets in range (hands 13-60), alternating, so the target is never hit.
     const result = martingale("WL".repeat(30));
-    expect(result.bets).toBe(60);
-    expect(result.next.skipped).toBeNull();
+    expect(result.bets).toBe(48);
+    expect(result.targetReachedAt).toBeNull();
+    expect(result.hands[60]!.skipped).toBe("past-last-hand");
+    expect(result.next.skipped).toBe("past-last-hand");
   });
 
   it("clips a held stake to the table maximum", () => {
