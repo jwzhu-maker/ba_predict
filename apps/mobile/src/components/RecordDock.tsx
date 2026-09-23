@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { formatUnits } from "../lib/format";
 import { revealRoad } from "../lib/reveal-road";
-import { useAppState, useDispatch, useMoney, useTableCall } from "../state/store";
+import { useAppState, useDispatch, useMoney, useSystemRun, useTableCall } from "../state/store";
 import { usePalette, type Palette } from "../theme";
 import { Chip } from "./ui";
 
@@ -49,7 +49,11 @@ export default function RecordDock() {
   // shown, marked as such. See the web dock.
   const nextBet =
     settling ?? (call.bet !== null && call.amount > 0 ? { bet: call.bet, amount: call.amount } : null);
-  const unitSize = session.bankroll.unitSize;
+  // Units are counted in whatever is setting the stake: a betting system's
+  // own base stake while it is the one speaking ("1, 2, 4, 8 units" is how
+  // its rule reads), otherwise the unit size from Settings.
+  const { run } = useSystemRun();
+  const unitSize = call.source === "system" ? run.config.baseStake : session.bankroll.unitSize;
   const units = nextBet && unitSize > 0 ? nextBet.amount / unitSize : null;
   const sideColour =
     nextBet?.bet === "player"

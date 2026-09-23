@@ -1,6 +1,7 @@
 import {
   DEFAULT_RULES,
   REVERSE_STREAK_FOUR_CONFIG,
+  REVERSE_STREAK_FOUR_MARTINGALE_CONFIG,
   REVERSE_TWELVE_CONFIG,
   runBettingSystem,
   type CoupRecord,
@@ -10,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   bettableHands,
   describeBetRate,
+  describeRunShape,
   describeSystemRules,
   expectedBetsPerGroup,
   handsInRange,
@@ -337,5 +339,42 @@ describe("system copy", () => {
     expect(run(`${WARMUP}TBTB`).next.hand).toBe(15);
     expect(run("").handsAvailable + 1).toBe(1);
     expect(tieReconciliation(run(""))).toBe("Hand 1 is coup 1 of the shoe — no ties yet.");
+  });
+});
+
+describe("Reverse Streak 4 Martingale copy", () => {
+  const martingale = (pattern: string) =>
+    runBettingSystem({
+      coups: coups(pattern),
+      rules: DEFAULT_RULES,
+      system: "reverse-streak-4-martingale" as const,
+    });
+  // Twelve Player hands, then Player again: every bet backs Banker and loses.
+  const lostFour = "P".repeat(12) + "PPPP";
+
+  it("describes doubling, the hold and the stop-win", () => {
+    const rules = describeSystemRules(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG, money);
+    expect(rules).toContain("1, 2, 4 and 8 units");
+    expect(rules).toContain("double after each loss");
+    expect(rules).toContain("holds the stake there until 2 net wins");
+    expect(rules).toContain("wins outnumber losses by 8");
+    expect(rules).toContain("runs to the end of the shoe");
+  });
+
+  it("tops out at eight units", () => {
+    expect(topStake(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG)).toBe(800);
+  });
+
+  it("names the doubling step, then the hold", () => {
+    expect(nextHandDetail(martingale("P".repeat(12) + "PP"))).toContain("doubling step 3 of 4");
+    expect(nextHandDetail(martingale(lostFour))).toContain(
+      "holding the top stake, +0 of +2 net to reset",
+    );
+  });
+
+  it("describes its shape as a Martingale, not a ladder", () => {
+    const shape = describeRunShape(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG);
+    expect(shape).toContain("a loss doubles the next one");
+    expect(shape).not.toContain("ladder resets");
   });
 });

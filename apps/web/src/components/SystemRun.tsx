@@ -1,9 +1,7 @@
 import {
   bettableHands,
+  describeRunShape,
   describeSystemRules,
-  expectedBetsPerGroup,
-  oddsOfReachingTopStep,
-  oddsOfTopStepPerHand,
 } from "@ba-predict/app-core";
 import { Card, Notice, Stat } from "./Primitives";
 import { formatPercent } from "../lib/format";
@@ -146,9 +144,7 @@ export default function SystemRun() {
       <p className="field-hint">
         One shoe of hindsight, on the hands that actually came out. What repeats is the shape,
         not the total:{" "}
-        {gated
-          ? `a group stops at its first loss, so it lands about ${expectedBetsPerGroup(run.config).toFixed(1)} bets on average rather than ${run.config.groupSize}, and the top of the ladder is reached roughly once in ${oddsOfReachingTopStep(run.config.maxLadderSteps)} groups.`
-          : `every hand in the range is staked and the ladder resets on the first loss, so the top step comes up on roughly one hand in ${oddsOfTopStepPerHand(run.config.maxLadderSteps)} and the run is many small swings rather than a few big ones.`}
+        {describeRunShape(run.config)}
       </p>
     </Card>
   );

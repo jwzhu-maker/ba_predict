@@ -8,6 +8,7 @@ import {
   useDispatch,
   useMoney,
   usePendingStop,
+  useSystemRun,
   useTableCall,
 } from "../state/store";
 
@@ -70,7 +71,11 @@ export default function RecordDock() {
   // "the rule wants Banker 150 and I am not taking it" is information.
   const nextBet =
     settling ?? (call.bet !== null && call.amount > 0 ? { bet: call.bet, amount: call.amount } : null);
-  const unitSize = session.bankroll.unitSize;
+  // Units are counted in whatever is setting the stake: a betting system's
+  // own base stake while it is the one speaking ("1, 2, 4, 8 units" is how
+  // its rule reads), otherwise the unit size from Settings.
+  const { run } = useSystemRun();
+  const unitSize = call.source === "system" ? run.config.baseStake : session.bankroll.unitSize;
   const units = nextBet && unitSize > 0 ? nextBet.amount / unitSize : null;
   // A limit waiting to be answered blocks the screen; the keys must not be
   // a way around it. The buttons are covered by the dialog, the keys are

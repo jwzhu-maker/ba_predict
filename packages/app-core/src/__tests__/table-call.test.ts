@@ -316,3 +316,25 @@ describe("the call under a second system", () => {
     expect(callToWager(call)).toBeNull();
   });
 });
+
+describe("the call under the Martingale system", () => {
+  const martingale = (pattern: string) =>
+    runBettingSystem({
+      coups: coups(pattern),
+      rules: DEFAULT_RULES,
+      system: "reverse-streak-4-martingale" as const,
+    });
+
+  it("stakes eight units after three losses", () => {
+    const call = resolveTableCall({ ...base, run: martingale(`${WARMUP}PPP`), bankroll: 5000 });
+    expect(call).toMatchObject({ source: "system", bet: "banker", amount: 800, stakes: true });
+  });
+
+  it("stops staking once it is eight hands up", () => {
+    // Every reference hand is Player, so eight Bankers are eight wins.
+    const call = resolveTableCall({ ...base, run: martingale(`${WARMUP}BBBBBBBB`) });
+    expect(call).toMatchObject({ source: "system", bet: null, stakes: false });
+    expect(call.noBetReason).toContain("stop-win");
+    expect(callToWager(call)).toBeNull();
+  });
+});

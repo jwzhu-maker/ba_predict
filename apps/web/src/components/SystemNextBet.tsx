@@ -56,6 +56,14 @@ export default function SystemNextBet() {
         </p>
       );
     }
+    if (next.skipped === "target-reached") {
+      return (
+        <p className="prose">
+          Done for this shoe — wins are {run.config.stopAtNetWins} ahead of losses, which is
+          where {run.name} stops. It starts again on the next shoe.
+        </p>
+      );
+    }
     // Only a system whose groups gate play can reach this; Reverse Streak
     // 4 never sits a hand out once it has started.
     if (next.skipped === "group-over") {

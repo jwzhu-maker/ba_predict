@@ -259,6 +259,8 @@ function describeSystemSkip(run: SystemRun): string {
       return `Group ${next.group} lost, so ${run.name} sits out the rest of it.`;
     case "past-last-hand":
       return `Done for this shoe — hand ${config.lastHand} is the last one ${run.name} plays.`;
+    case "target-reached":
+      return `Done for this shoe — ${run.name} is ${config.stopAtNetWins} hands up, its stop-win.`;
     default:
       return `${run.name} is not betting this coup.`;
   }

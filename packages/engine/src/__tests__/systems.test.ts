@@ -4,6 +4,7 @@ import type { CoupRecord, Outcome } from "../types";
 import {
   BETTING_SYSTEMS,
   REVERSE_STREAK_FOUR_CONFIG,
+  REVERSE_STREAK_FOUR_MARTINGALE_CONFIG,
   REVERSE_TWELVE_CONFIG,
   bettingSystemById,
   runBettingSystem,
@@ -601,5 +602,107 @@ describe("system selection", () => {
         system.defaults,
       );
     }
+  });
+});
+
+/**
+ * A shoe whose bets from hand 13 on come out as `results` says: "W" the
+ * mirrored side wins, "L" it loses. Built hand by hand, because each hand's
+ * side depends on the hand twelve back.
+ */
+function shoeFromResults(results: string): string {
+  const hands: ("P" | "B")[] = WARMUP.split("") as ("P" | "B")[];
+  for (const result of results) {
+    const reference = hands[hands.length - 12]!;
+    const side = reference === "P" ? "B" : "P";
+    hands.push(result === "W" ? side : side === "P" ? "B" : "P");
+  }
+  return hands.join("");
+}
+
+describe("Reverse Streak 4 Martingale", () => {
+  const martingale = (results: string) =>
+    run(shoeFromResults(results), { system: "reverse-streak-4-martingale" });
+  const stakes = (results: string) =>
+    martingale(results)
+      .hands.filter((hand) => hand.bet !== null)
+      .map((hand) => hand.stake);
+
+  it("is listed with its defaults", () => {
+    expect(bettingSystemById("reverse-streak-4-martingale")).toMatchObject({
+      name: "Reverse Streak 4 Martingale",
+      defaults: REVERSE_STREAK_FOUR_MARTINGALE_CONFIG,
+    });
+    expect(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG).toMatchObject({
+      baseStake: 100,
+      maxLadderSteps: 4,
+      staking: "martingale",
+      recoveryWins: 2,
+      stopAtNetWins: 8,
+      lastHand: null,
+    });
+  });
+
+  it("doubles after each loss and drops back to one unit on a win", () => {
+    expect(stakes("LLWLW")).toEqual([100, 200, 400, 100, 200]);
+    expect(martingale("LLW").next).toMatchObject({ stake: 100, ladderStep: 1, holdNet: null });
+  });
+
+  it("holds at 8 units after losing the fourth step, until two net wins", () => {
+    // 1, 2, 4, 8 all lose; then 8 is held: W (+1), L (0), W (+1), W (+2) → back to 1.
+    expect(stakes("LLLL" + "WLWW" + "L")).toEqual([
+      100, 200, 400, 800, 800, 800, 800, 800, 100,
+    ]);
+  });
+
+  it("reports the hold on the next hand", () => {
+    expect(martingale("LLLLW").next).toMatchObject({ stake: 800, ladderStep: 4, holdNet: 1 });
+    expect(martingale("LLLLL").next).toMatchObject({ stake: 800, holdNet: -1 });
+    expect(martingale("LLLLWW").next).toMatchObject({ stake: 100, ladderStep: 1, holdNet: null });
+  });
+
+  it("stops for the rest of the shoe once wins exceed losses by eight", () => {
+    const result = martingale("W".repeat(8) + "LWLW");
+    expect(result.netHands).toBe(8);
+    expect(result.targetReachedAt).toBe(20);
+    expect(result.bets).toBe(8);
+    expect(result.hands.slice(20).every((hand) => hand.skipped === "target-reached")).toBe(true);
+    expect(result.next).toMatchObject({ skipped: "target-reached", bet: null, stake: 0 });
+  });
+
+  it("counts net hands across losses on the way to the target", () => {
+    const result = martingale("WWLWWWLWWWWW" + "W");
+    // 11 wins, 2 losses: +8 on the twelfth bet, so the thirteenth is sat out.
+    expect(result.bets).toBe(12);
+    expect(result.targetReachedAt).toBe(24);
+  });
+
+  it("plays past hand 60, having no last hand of its own", () => {
+    const result = martingale("WL".repeat(30));
+    expect(result.bets).toBe(60);
+    expect(result.next.skipped).toBeNull();
+  });
+
+  it("clips a held stake to the table maximum", () => {
+    const result = run(shoeFromResults("LLLL"), {
+      system: "reverse-streak-4-martingale",
+      tableMax: 500,
+    });
+    expect(result.next).toMatchObject({ stake: 500, requestedStake: 800, clipped: true });
+    expect(result.clippedBets).toBe(1);
+  });
+
+  it("leaves the existing systems' stakes unchanged", () => {
+    const pattern = shoeFromResults("WWWWWLWWL");
+    const streak = run(pattern, { system: "reverse-streak-4" });
+    expect(streak.hands.filter((h) => h.bet).map((h) => h.stake)).toEqual([
+      100, 200, 300, 400, 100, 200, 100, 200, 300,
+    ]);
+    expect(streak.targetReachedAt).toBeNull();
+    expect(BETTING_SYSTEMS.map((system) => system.id)).toEqual([
+      "reverse-12",
+      "reverse-streak-4",
+      "reverse-streak-4-martingale",
+    ]);
   });
 });
