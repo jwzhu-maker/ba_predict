@@ -22,7 +22,7 @@ export default function SettingsScreen() {
           label="Decks"
           value={rules.decks}
           min={1}
-          max={8}
+          max={12}
           hint="Changing this starts a new shoe"
           onChange={(decks) =>
             dispatch({ type: "update-rules", rules: { decks: Math.round(decks) } })

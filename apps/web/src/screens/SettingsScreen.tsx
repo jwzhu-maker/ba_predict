@@ -10,7 +10,7 @@ import { Card, NumberField, Notice, SelectField, Toggle } from "../components/Pr
 import { useAppState, useDispatch } from "../state/store";
 
 /** The shoe sizes a real table is dealt from. */
-const DECK_COUNTS = [1, 2, 4, 6, 8] as const;
+const DECK_COUNTS = [1, 2, 4, 6, 8, 10, 12] as const;
 
 /**
  * Deck counts to offer, including whatever is currently set.
