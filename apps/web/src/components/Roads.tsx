@@ -15,10 +15,16 @@ function GridShell({
   columns,
   children,
   label,
+  revision = 0,
 }: {
   columns: number;
   children: React.ReactNode;
   label: string;
+  /**
+   * Anything else that changes what the newest mark shows without adding a
+   * mark — a tie on the Big Road bumps the last cell's tie count.
+   */
+  revision?: number;
 }) {
   // Boards read left to right and grow at the right, so the newest marks
   // are the ones that matter. Whenever a mark or a column is added — and on
@@ -30,7 +36,7 @@ function GridShell({
   useLayoutEffect(() => {
     const element = scroller.current;
     if (element) element.scrollLeft = element.scrollWidth;
-  }, [columns, marks]);
+  }, [columns, marks, revision]);
 
   return (
     <div className="road-scroll" ref={scroller}>
@@ -72,7 +78,11 @@ export function BeadPlate({ roads }: { roads: RoadSet }) {
 export function BigRoad({ roads }: { roads: RoadSet }) {
   const layout = useMemo(() => layoutBigRoad(roads.bigRoad, ROWS), [roads.bigRoad]);
   return (
-    <GridShell columns={layout.columns} label="Big road">
+    <GridShell
+      columns={layout.columns}
+      label="Big road"
+      revision={layout.placements.reduce((ties, placement) => ties + placement.cell.ties, 0)}
+    >
       {layout.placements.map((placement, index) => (
         <span
           key={index}

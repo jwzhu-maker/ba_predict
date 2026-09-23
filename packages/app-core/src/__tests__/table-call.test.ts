@@ -343,8 +343,13 @@ describe("a skipped coup", () => {
   it("keeps what it declined, for the dock to show as not staked", () => {
     const call = resolveTableCall({ ...base, skipped: true });
     expect(call).toMatchObject({ source: "skipped", bet: null, stakes: false });
-    expect(call.skippedSuggestion).toEqual({ bet: "banker", amount: 10 });
+    expect(call.skippedSuggestion).toEqual({ bet: "banker", amount: 10, source: "advice" });
     expect(callToWager(call)).toBeNull();
+  });
+
+  it("remembers a declined system bet as the system's", () => {
+    const call = resolveTableCall({ ...base, run: run(WARMUP), skipped: true });
+    expect(call.skippedSuggestion).toEqual({ bet: "banker", amount: 100, source: "system" });
   });
 
   it("has nothing to keep when the underlying call bets nothing", () => {

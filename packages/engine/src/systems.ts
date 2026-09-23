@@ -668,6 +668,8 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
       wins - losses >= config.stopAtNetWins
     ) {
       targetReachedAt = hand;
+      // The group ends here too: it covers no hand the rule will play.
+      group_.lastHand = hand;
     }
 
     hands.push({

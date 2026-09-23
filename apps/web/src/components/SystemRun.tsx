@@ -101,7 +101,9 @@ export default function SystemRun() {
                 <th scope="row">
                   {group.group}
                   <span className="row-note row-note-muted">
-                    {group.perfect
+                    {run.targetReachedAt !== null && group.lastHand === run.targetReachedAt
+                      ? `hands ${group.firstHand}–${group.lastHand}, stop-win reached`
+                      : group.perfect
                       ? `hands ${group.firstHand}–${group.lastHand}, all won`
                       : group.lostAt !== null
                         ? `hands ${group.firstHand}–${group.lastHand}, lost on ${group.lostAt}`

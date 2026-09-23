@@ -370,6 +370,14 @@ describe("Reverse Streak 4 Martingale copy", () => {
     );
   });
 
+  it("counts possible bets only up to the stop-win", () => {
+    // Every reference hand is Player, so eight Bankers are eight wins: the
+    // target lands on hand 20, and the rest of the shoe is not bettable.
+    const result = martingale("P".repeat(12) + "B".repeat(8) + "PB".repeat(20));
+    expect(result.targetReachedAt).toBe(20);
+    expect(bettableHands(result)).toBe(8);
+  });
+
   it("tops out at eight units", () => {
     expect(topStake(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG)).toBe(400);
   });

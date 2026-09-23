@@ -53,8 +53,14 @@ export function readSystemNext(run: SystemRun): SystemNextReading {
  * flagged as ending early.
  */
 export function bettableHands(run: SystemRun): number {
-  const { config, handsAvailable } = run;
-  const last = config.lastHand === null ? handsAvailable : Math.min(config.lastHand, handsAvailable);
+  const { config, handsAvailable, targetReachedAt } = run;
+  // The net-wins target ends the rule early, so hands after it were never
+  // eligible and must not sit in the denominator.
+  const last = Math.min(
+    config.lastHand ?? Infinity,
+    handsAvailable,
+    targetReachedAt ?? Infinity,
+  );
   return Math.max(0, last - config.lookback);
 }
 

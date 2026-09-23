@@ -551,6 +551,8 @@ function reduceAction(state: AppState, action: Action): AppState {
         activeSystem: action.system,
         skipNextCoup: false,
         pendingWager: null,
+        // Dropping a wager is an edit to the pending inputs; see "add-card".
+        future: state.pendingWager !== null ? [] : state.future,
       };
 
     case "set-table-mode":
@@ -576,6 +578,7 @@ function reduceAction(state: AppState, action: Action): AppState {
         ...state,
         skipNextCoup: action.skip,
         pendingWager: action.skip ? null : state.pendingWager,
+        future: action.skip && state.pendingWager !== null ? [] : state.future,
       };
 
     case "record-coup": {

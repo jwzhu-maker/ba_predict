@@ -52,12 +52,17 @@ export default function RecordDock() {
     settling ??
     (call.bet !== null && call.amount > 0
       ? { bet: call.bet, amount: call.amount }
-      : call.skippedSuggestion);
+      : call.skippedSuggestion
+        ? { bet: call.skippedSuggestion.bet, amount: call.skippedSuggestion.amount }
+        : null);
   // Units are counted in whatever is setting the stake: a betting system's
   // own base stake while it is the one speaking ("1, 2, 4, 8 units" is how
   // its rule reads), otherwise the unit size from Settings.
   const { run } = useSystemRun();
-  const unitSize = call.source === "system" ? run.config.baseStake : session.bankroll.unitSize;
+  // A skipped call keeps the source of what it declined, so skipping a
+  // system's bet does not re-count it in the Settings unit.
+  const speaking = call.source === "skipped" ? call.skippedSuggestion?.source : call.source;
+  const unitSize = speaking === "system" ? run.config.baseStake : session.bankroll.unitSize;
   const units = nextBet && unitSize > 0 ? nextBet.amount / unitSize : null;
   const sideColour =
     nextBet?.bet === "player"

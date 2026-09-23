@@ -683,6 +683,15 @@ describe("redo", () => {
     }
   });
 
+  it("is cleared by a skip or a system switch that drops a wager", () => {
+    const undone = play(recorded(), { type: "undo" });
+    expect(undone.pendingWager).not.toBeNull();
+    expect(reducer(undone, { type: "skip-next-coup", skip: true }).future).toHaveLength(0);
+    expect(
+      reducer(undone, { type: "set-active-system", system: "reverse-12" }).future,
+    ).toHaveLength(0);
+  });
+
   it("keeps a ladder re-seeded by a new table maximum", () => {
     const state = play(
       createInitialState(),

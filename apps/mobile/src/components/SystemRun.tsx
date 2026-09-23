@@ -102,7 +102,9 @@ export default function SystemRun() {
             <View style={{ flex: 1.1 }}>
               <Text style={{ color: p.text, fontSize: 13, fontWeight: "600" }}>{group.group}</Text>
               <Text style={{ color: p.muted, fontSize: 10 }}>
-                {group.perfect
+                {run.targetReachedAt !== null && group.lastHand === run.targetReachedAt
+                  ? `hands ${group.firstHand}–${group.lastHand}, stop-win reached`
+                  : group.perfect
                   ? `hands ${group.firstHand}–${group.lastHand}, all won`
                   : group.lostAt !== null
                     ? `hands ${group.firstHand}–${group.lastHand}, lost on ${group.lostAt}`

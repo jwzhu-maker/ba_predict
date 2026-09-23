@@ -84,7 +84,7 @@ export interface TableCall {
    * On a skipped coup, what the app would otherwise have pointed at, so the
    * record dock can still show "Banker 100, not staked". Null otherwise.
    */
-  skippedSuggestion: { bet: BetType; amount: number } | null;
+  skippedSuggestion: { bet: BetType; amount: number; source: TableCallSource } | null;
 }
 
 export interface TableCallInput {
@@ -148,7 +148,7 @@ function pointAt(input: TableCallInput): TableCall {
       noBetReason: "You are sitting this coup out.",
       skippedSuggestion:
         declined.bet !== null && declined.amount > 0
-          ? { bet: declined.bet, amount: declined.amount }
+          ? { bet: declined.bet, amount: declined.amount, source: declined.source }
           : null,
     };
   }

@@ -162,7 +162,11 @@ export function BigRoad({ roads }: { roads: RoadSet }) {
   }
 
   fill(grid, s.cell);
-  return <Board rows={grid} marks={layout.placements.length} />;
+  return <Board
+      rows={grid}
+      // Ties fold into the last cell rather than adding one, so they count too.
+      marks={layout.placements.reduce((count, placement) => count + 1 + placement.cell.ties, 0)}
+    />;
 }
 
 /**

@@ -720,5 +720,7 @@ describe("Reverse Streak 4 Martingale after its target", () => {
     expect(result.groups.map((group) => group.group)).toEqual([1, 2]);
     expect(result.groups.every((group) => group.bets > 0)).toBe(true);
     expect(result.hands.slice(20).every((hand) => hand.group === null)).toBe(true);
+    // The group holding the target closes on it, not at hand 24.
+    expect(result.groups[1]).toMatchObject({ firstHand: 19, lastHand: 20 });
   });
 });
