@@ -724,3 +724,32 @@ describe("Reverse Streak 4 Martingale after its target", () => {
     expect(result.groups[1]).toMatchObject({ firstHand: 19, lastHand: 20 });
   });
 });
+
+describe("Reverse Streak 4 Martingale under a table maximum", () => {
+  // Player wins pay even money, so drive the hands to Player: after an
+  // all-Player warm-up the first twelve bets back Banker, so losses there
+  // are Player hands and wins are Banker hands. Use a table max of 300,
+  // cutting the 400 top stake.
+  const clipped = (results: string) =>
+    run(shoeFromResults(results), { system: "reverse-streak-4-martingale", tableMax: 300 });
+  const stakes = (results: string) =>
+    clipped(results)
+      .hands.filter((hand) => hand.bet !== null)
+      .map((hand) => hand.stake);
+
+  it("holds past two net wins until the cut climb is back in profit", () => {
+    // Climb: -50 -100 -200 -300 = -650. Two wins at 300 (Banker, 0.95x)
+    // make +570: still short, so the third bet stays at the top; the third
+    // win takes it to +855 - 650 > 0, and the next bet is one unit again.
+    expect(stakes("LLLL" + "WWW" + "L")).toEqual([50, 100, 200, 300, 300, 300, 300, 50]);
+    const holding = clipped("LLLLWW").next;
+    expect(holding).toMatchObject({ stake: 300, holdNet: 2 });
+    expect(holding.holdShortfall).toBeCloseTo(80, 6);
+    expect(clipped("LLLLWWW").next).toMatchObject({ stake: 50, holdNet: null, holdShortfall: null });
+  });
+
+  it("keeps the two-win rule when nothing was cut", () => {
+    const result = run(shoeFromResults("LLLLWW"), { system: "reverse-streak-4-martingale" });
+    expect(result.next).toMatchObject({ stake: 50, holdShortfall: null });
+  });
+});

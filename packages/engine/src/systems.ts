@@ -43,7 +43,9 @@ export type BettingSystemId = "reverse-12" | "reverse-streak-4" | "reverse-strea
  * win, for `maxLadderSteps` stakes (1, 2, 4, 8 at four). A loss at the top
  * stake does not double again; the stake holds there until `recoveryWins`
  * net wins at that stake have been banked — two wins at 8 pay back the
- * 1 + 2 + 4 + 8 the climb lost — and only then returns to the base.
+ * 1 + 2 + 4 + 8 the climb lost — and only then returns to the base. If the
+ * table maximum cut any stake in the climb, those wins may not pay it back,
+ * so the hold then also waits until the climb's money is actually back.
  */
 export type SystemStaking = "ladder" | "martingale";
 
@@ -283,6 +285,13 @@ export interface SystemNext {
    * that stake so far (can be negative). Null whenever it is not holding.
    */
   holdNet: number | null;
+  /**
+   * Martingale only, while holding after the table maximum cut a stake in
+   * this climb: how much of the climb's loss is still to win back (0 once
+   * it is back). Null when nothing was cut, since the win count alone then
+   * decides the reset.
+   */
+  holdShortfall: number | null;
 }
 
 export interface SystemRun {
@@ -341,17 +350,28 @@ export interface SystemRun {
 }
 
 /**
- * Where the stake stands between bets. `banked` drives a ladder; `level`,
- * `holding` and `holdNet` drive a Martingale.
+ * Where the stake stands between bets. `banked` drives a ladder; the rest
+ * drive a Martingale. A "climb" runs from a bet at one unit to the win that
+ * ends it (or the end of a hold); `climbProfit` is its running money and
+ * `climbClipped` whether the table maximum cut any of its stakes.
  */
 interface StakeState {
   banked: number;
   level: number;
   holding: boolean;
   holdNet: number;
+  climbProfit: number;
+  climbClipped: boolean;
 }
 
-const FRESH_STAKE: StakeState = { banked: 0, level: 0, holding: false, holdNet: 0 };
+const FRESH_STAKE: StakeState = {
+  banked: 0,
+  level: 0,
+  holding: false,
+  holdNet: 0,
+  climbProfit: 0,
+  climbClipped: false,
+};
 
 function isMartingale(config: BettingSystemConfig): boolean {
   return config.staking === "martingale";
@@ -373,7 +393,13 @@ function rungOf(config: BettingSystemConfig, state: StakeState): number {
 }
 
 /** Move the stake on after a settled bet. Mutates `state`. */
-function advanceStake(config: BettingSystemConfig, state: StakeState, won: boolean): void {
+function advanceStake(
+  config: BettingSystemConfig,
+  state: StakeState,
+  won: boolean,
+  profit: number,
+  clipped: boolean,
+): void {
   if (!isMartingale(config)) {
     if (won) {
       state.banked += 1;
@@ -385,17 +411,22 @@ function advanceStake(config: BettingSystemConfig, state: StakeState, won: boole
     }
     return;
   }
+  state.climbProfit += profit;
+  if (clipped) state.climbClipped = true;
   if (state.holding) {
-    // Counted in wins, not money, as the rule is written. At full stake two
-    // net wins more than cover the climb (8 + 8 > 1 + 2 + 4 + 8); when the
-    // table maximum clips the top stake they may not, and the run card says
-    // so rather than this quietly holding longer than the rule asks.
+    // Counted in wins, as the rule is written: at full stake two net wins
+    // more than cover the climb (8 + 8 > 1 + 2 + 4 + 8). When the table
+    // maximum cut a stake in this climb they may not, so the hold then also
+    // waits until the climb's money is actually back.
     state.holdNet += won ? 1 : -1;
-    if (state.holdNet >= (config.recoveryWins ?? 2)) Object.assign(state, FRESH_STAKE);
+    const winsDone = state.holdNet >= (config.recoveryWins ?? 2);
+    const moneyBack = !state.climbClipped || state.climbProfit >= -1e-9;
+    if (winsDone && moneyBack) Object.assign(state, FRESH_STAKE);
     return;
   }
   if (won) {
-    state.level = 0;
+    // A win below the top ends the climb.
+    Object.assign(state, FRESH_STAKE);
   } else if (state.level + 1 < config.maxLadderSteps) {
     state.level += 1;
   } else {
@@ -660,7 +691,7 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
     // alone would call a 5-1 group clean.
     group_.perfect = group_.lostAt === null && group_.bets === config.groupSize;
 
-    advanceStake(config, stakeState, won);
+    advanceStake(config, stakeState, won, settlement.profit, stake < wanted - 1e-9);
     if (!won && config.groupsGateBetting) groupDead = true;
     if (
       config.stopAtNetWins != null &&
@@ -746,6 +777,7 @@ function describeNext(
     clipped: false,
     unaffordable: false,
     holdNet: null,
+    holdShortfall: null,
   });
 
   if (config.lastHand !== null && hand > config.lastHand) return idle("past-last-hand", null, null);
@@ -788,5 +820,9 @@ function describeNext(
     clipped: stake < requestedStake - 1e-9,
     unaffordable: bankroll !== null && stake > bankroll + 1e-9,
     holdNet: isMartingale(config) && state.holding ? state.holdNet : null,
+    holdShortfall:
+      isMartingale(config) && state.holding && state.climbClipped
+        ? Math.max(0, -state.climbProfit)
+        : null,
   };
 }

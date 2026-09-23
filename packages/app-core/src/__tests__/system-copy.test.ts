@@ -389,6 +389,20 @@ describe("Reverse Streak 4 Martingale copy", () => {
     );
   });
 
+  it("says why it is still holding when a cut climb is not back yet", () => {
+    // Four Banker losses, then two Banker wins at a 300 table maximum.
+    const run = runBettingSystem({
+      coups: coups("P".repeat(12) + "PPPP" + "BB"),
+      rules: DEFAULT_RULES,
+      system: "reverse-streak-4-martingale" as const,
+      tableMax: 300,
+    });
+    expect(nextHandDetail(run)).toContain("until the cut climb's losses are won back");
+    expect(describeSystemRules(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG, money)).toContain(
+      "If the table maximum cuts a stake, the hold also waits until the losses are actually won back.",
+    );
+  });
+
   it("describes its shape as a Martingale, not a ladder", () => {
     const shape = describeRunShape(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG);
     expect(shape).toContain("a loss doubles the next one");

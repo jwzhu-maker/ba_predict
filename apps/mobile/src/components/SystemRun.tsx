@@ -144,7 +144,7 @@ export default function SystemRun() {
           the ladder asked for, so this is what the rule managed at your table rather than the
           rule as written.
           {run.config.staking === "martingale"
-            ? " At the clipped top stake, the two net wins that end a hold no longer cover the climb's losses."
+            ? " At the cut top stake, a hold lasts until the climb's losses are actually won back, not just two net wins."
             : null}
         </Notice>
       ) : null}
