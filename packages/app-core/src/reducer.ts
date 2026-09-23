@@ -137,6 +137,15 @@ export interface AppState {
    */
   adviceReasonsOpen: boolean;
   /**
+   * Whether pressing P / B / T plays a short tick as well as buzzing.
+   *
+   * The buzz is always on — it is silent and is the confirmation a thumb
+   * feels without looking — but a sound at a table is a choice. The phone's
+   * own silent switch is honoured on top of this where the platform lets
+   * an app see it.
+   */
+  tapSound: boolean;
+  /**
    * The limit the player has been shown and has answered for, or null.
    *
    * Crossing a stop-win or a stop-loss raises a modal the player has to
@@ -211,6 +220,7 @@ export function createInitialState(): AppState {
     skipNextCoup: false,
     tableMode: "play",
     adviceReasonsOpen: false,
+    tapSound: true,
     acknowledgedStop: null,
     screen: "table",
   };
@@ -268,6 +278,7 @@ export type Action =
   | { type: "skip-next-coup"; skip: boolean }
   | { type: "set-table-mode"; mode: TableMode }
   | { type: "set-advice-reasons-open"; open: boolean }
+  | { type: "set-tap-sound"; on: boolean }
   /** "I have seen that I am at my limit." Answered per limit, not per coup. */
   | { type: "acknowledge-stop" }
   | { type: "update-rules"; rules: Partial<TableRules> }
@@ -533,6 +544,9 @@ function reduceAction(state: AppState, action: Action): AppState {
 
     case "set-advice-reasons-open":
       return { ...state, adviceReasonsOpen: action.open };
+
+    case "set-tap-sound":
+      return { ...state, tapSound: action.on };
 
     case "acknowledge-stop": {
       // Recorded as the limit actually standing, so that answering for a

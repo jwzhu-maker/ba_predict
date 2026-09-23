@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { formatUnits } from "../lib/format";
 import { revealRoad } from "../lib/reveal-road";
+import { tapFeedback } from "../lib/tap-feedback";
 import { useAppState, useDispatch, useMoney, useSystemRun, useTableCall } from "../state/store";
 import { usePalette, type Palette } from "../theme";
 import { Chip } from "./ui";
@@ -35,7 +36,7 @@ import { Chip } from "./ui";
  * tapping the next result.
  */
 export default function RecordDock() {
-  const { session, pendingWager, cardEntry, history, future } = useAppState();
+  const { session, pendingWager, cardEntry, history, future, tapSound } = useAppState();
   const dispatch = useDispatch();
   const money = useMoney();
   const p = usePalette();
@@ -82,6 +83,8 @@ export default function RecordDock() {
   const noCommissionTable = session.rules.bankerSixPayout !== null;
 
   const record = (outcome: Outcome) => {
+    // First, so the buzz lands with the tap rather than after the render.
+    tapFeedback(tapSound);
     dispatch({
       type: "record-coup",
       wager: callToWager(call),

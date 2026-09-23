@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { callToWager } from "@ba-predict/app-core";
 import { formatUnits } from "../lib/format";
 import { revealRoad } from "../lib/reveal-road";
+import { tapFeedback } from "../lib/tap-feedback";
 import {
   useAppState,
   useDispatch,
@@ -59,7 +60,7 @@ const KEY_OUTCOMES: Record<string, Outcome> = {
  * what the thumb hits while tapping P and B.
  */
 export default function RecordDock() {
-  const { session, pendingWager, cardEntry, history, future } = useAppState();
+  const { session, pendingWager, cardEntry, history, future, tapSound } = useAppState();
   const dispatch = useDispatch();
   const money = useMoney();
   // What the Bet card is showing. Recording settles against it, so the two
@@ -105,6 +106,8 @@ export default function RecordDock() {
 
   const record = useCallback(
     (outcome: Outcome) => {
+      // First, so the buzz lands with the tap rather than after the render.
+      tapFeedback(tapSound);
       dispatch({
         type: "record-coup",
         wager: callToWager(call),
@@ -122,7 +125,7 @@ export default function RecordDock() {
       setBankerWinOnSix(false);
       revealRoad();
     },
-    [call, dispatch, playerPair, bankerPair, cardCount, bankerWinOnSix, noCommissionTable],
+    [call, dispatch, playerPair, bankerPair, cardCount, bankerWinOnSix, noCommissionTable, tapSound],
   );
 
   /**

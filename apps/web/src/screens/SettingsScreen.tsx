@@ -35,7 +35,7 @@ function deckOptions(current: number): { value: number; label: string }[] {
 }
 
 export default function SettingsScreen() {
-  const { session, currency } = useAppState();
+  const { session, currency, tapSound } = useAppState();
   const dispatch = useDispatch();
   const { rules, bankroll } = session;
 
@@ -252,6 +252,15 @@ export default function SettingsScreen() {
           step={0.25}
           hint="Only used if a bet is ever genuinely +EV, which on a real table it is not"
           onChange={(multiplier) => dispatch({ type: "set-kelly-multiplier", multiplier })}
+        />
+      </Card>
+
+      <Card title="Feedback">
+        <Toggle
+          label="Tap sound"
+          hint="A short tick when P, B or T records a result. The phone buzzes either way where the browser allows it (Android; not iPhone Safari), and the iPhone's silent switch mutes the tick."
+          checked={tapSound}
+          onChange={(on) => dispatch({ type: "set-tap-sound", on })}
         />
       </Card>
 

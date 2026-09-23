@@ -676,3 +676,14 @@ describe("redo", () => {
     expect(deserializeState(serializeState(state)).future).toEqual([]);
   });
 });
+
+describe("tap sound", () => {
+  it("is on by default, toggles, and survives a relaunch", () => {
+    const start = createInitialState();
+    expect(start.tapSound).toBe(true);
+    const off = reducer(start, { type: "set-tap-sound", on: false });
+    expect(off.tapSound).toBe(false);
+    expect(deserializeState(serializeState(off)).tapSound).toBe(false);
+    expect(deserializeState(serializeState(start)).tapSound).toBe(true);
+  });
+});

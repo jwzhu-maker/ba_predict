@@ -78,6 +78,8 @@ export function deserializeState(raw: string | null | undefined): AppState {
       tableMode: parsed.tableMode === "observe" ? "observe" : "play",
       // How much the app should explain is a preference, so it survives too.
       adviceReasonsOpen: parsed.adviceReasonsOpen === true,
+      // A preference, so it survives; anything but an explicit false is on.
+      tapSound: parsed.tapSound !== false,
       // An answered-for limit survives a relaunch: reopening the app is not
       // a reason to be asked about the same stop-loss again. It is checked
       // against the restored session on the first action either way, so a
