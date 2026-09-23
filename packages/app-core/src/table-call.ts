@@ -5,7 +5,7 @@ import {
   type PlacedWager,
   type SystemRun,
 } from "@ba-predict/engine";
-import { nextHandDetail } from "./system-copy";
+import { nextHandDetail, type SystemCopyMoney } from "./system-copy";
 
 /**
  * What the app is telling you to do on the very next coup — one answer, from
@@ -114,6 +114,8 @@ export interface TableCallInput {
   tableMin?: number;
   /** "observe" keeps score without ever staking. */
   mode: TableMode;
+  /** Formats money in the detail line. Omitted uses plain two decimals. */
+  money?: SystemCopyMoney;
 }
 
 const IDLE = {
@@ -182,7 +184,7 @@ function pointAt(input: TableCallInput): TableCall {
       noBetReason: null,
       // Shared with the system's own card, because the two sit one above
       // the other and a group step is not a ladder rung on every system.
-      detail: nextHandDetail(run),
+      detail: nextHandDetail(run, input.money),
       requestedAmount: next.clipped ? next.requestedStake : null,
       clipped: next.clipped,
     };

@@ -95,7 +95,7 @@ export default function SystemNextBet() {
         {/* Shared with the Bet card's own detail line, and shaped by the
             system: a group step is the ladder rung on Reverse 12 and is not
             on Reverse Streak 4, where a loss resets one and not the other. */}
-        <p className="field-hint">{nextHandDetail(run)}</p>
+        <p className="field-hint">{nextHandDetail(run, money)}</p>
       </>
     );
   };

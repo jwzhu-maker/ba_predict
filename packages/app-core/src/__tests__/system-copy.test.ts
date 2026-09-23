@@ -384,8 +384,8 @@ describe("Reverse Streak 4 Martingale copy", () => {
 
   it("names the doubling step, then the hold", () => {
     expect(nextHandDetail(martingale("P".repeat(12) + "PP"))).toContain("doubling step 3 of 4");
-    expect(nextHandDetail(martingale(lostFour))).toContain(
-      "holding the top stake, +0 of +2 net to reset",
+    expect(nextHandDetail(martingale(lostFour), money)).toContain(
+      "holding the top stake, +0 of +2 net, $750 still to win back",
     );
   });
 
@@ -397,7 +397,10 @@ describe("Reverse Streak 4 Martingale copy", () => {
       system: "reverse-streak-4-martingale" as const,
       tableMax: 300,
     });
-    expect(nextHandDetail(run)).toContain("until the climb's losses are won back");
+    // 50 + 100 + 200 + 300 lost, two Banker wins at 300 paid 570: 80 short.
+    expect(nextHandDetail(run, money)).toContain(
+      "holding the top stake, +2 of +2 net, $80 still to win back",
+    );
     expect(describeSystemRules(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG, money)).toContain(
       "once the climb's losses are actually won back",
     );

@@ -265,6 +265,7 @@ export function useTableCall(): TableCall {
   const { session, pendingWager, skipNextCoup, activeSystem, tableMode } = useAppState();
   const advice = useAdvice();
   const { run, finished } = useSystemRun();
+  const money = useMoney();
   return useMemo(
     () =>
       resolveTableCall({
@@ -278,6 +279,7 @@ export function useTableCall(): TableCall {
         bankroll: session.bankroll.bankroll,
         tableMin: session.bankroll.tableMin,
         mode: tableMode,
+        money,
       }),
     [
       advice,
@@ -289,6 +291,7 @@ export function useTableCall(): TableCall {
       session.bankroll.bankroll,
       session.bankroll.tableMin,
       tableMode,
+      money,
     ],
   );
 }

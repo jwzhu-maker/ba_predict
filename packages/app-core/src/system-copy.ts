@@ -280,16 +280,24 @@ export function tieReconciliation(run: SystemRun): string {
  * diverge on Reverse Streak 4 the moment a hand is lost, so the two systems
  * get different lines rather than one line that is wrong for one of them.
  */
-export function nextHandDetail(run: SystemRun): string | null {
+export function nextHandDetail(
+  run: SystemRun,
+  money: SystemCopyMoney = { format: (value) => value.toFixed(2) },
+): string | null {
   const { config, next } = run;
   if (next.bet === null) return null;
 
   const recovery = config.recoveryWins ?? 2;
+  // While holding, the line gives both halves of what ends the hold: the
+  // net wins so far and, while the climb is still behind, the money left to
+  // win back — so the player can see why a second win did not reset it.
+  const owed =
+    next.holdShortfall !== null && next.holdShortfall > 0.005
+      ? `, ${money.format(next.holdShortfall)} still to win back`
+      : "";
   const rung =
-    next.holdShortfall !== null && next.holdShortfall > 0 && next.holdNet !== null && next.holdNet >= recovery
-      ? "holding the top stake until the climb's losses are won back"
-      : next.holdNet !== null
-      ? `holding the top stake, ${next.holdNet >= 0 ? "+" : ""}${next.holdNet} of +${recovery} net to reset`
+    next.holdNet !== null
+      ? `holding the top stake, ${next.holdNet >= 0 ? "+" : ""}${next.holdNet} of +${recovery} net${owed}`
       : config.staking === "martingale"
         ? `doubling step ${next.ladderStep} of ${config.maxLadderSteps}`
         : config.groupsGateBetting
