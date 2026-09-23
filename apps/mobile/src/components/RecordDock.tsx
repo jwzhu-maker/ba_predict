@@ -23,9 +23,13 @@ import { Chip } from "./ui";
  *   - the per-coup modifiers live here rather than in a card, because they
  *     have to be set BEFORE the result is recorded and a pinned button
  *     whose inputs are two screens away records whatever they were left at.
+ *
+ * Undo and Redo share the top line with the stake, a row away from P / B /
+ * T: close enough to fix a mis-tap where it was made, far enough not to be
+ * hit while tapping the next result.
  */
 export default function RecordDock() {
-  const { session, pendingWager, cardEntry } = useAppState();
+  const { session, pendingWager, cardEntry, history, future } = useAppState();
   const dispatch = useDispatch();
   const money = useMoney();
   const p = usePalette();
@@ -73,12 +77,35 @@ export default function RecordDock() {
 
   return (
     <View style={local.dock}>
-      <Text style={local.line} numberOfLines={1}>
-        {settling
-          ? `${money.format(settling.amount)} on ${betLabel(settling.bet)}`
-          : "Nothing staked — road only"}
-        {cardEntry.length > 0 ? ` · ${cardEntry.length} cards tracked` : ""}
-      </Text>
+      <View style={local.top}>
+        <Text style={[local.line, { flex: 1 }]} numberOfLines={1}>
+          {settling
+            ? `${money.format(settling.amount)} on ${betLabel(settling.bet)}`
+            : "Nothing staked — road only"}
+          {cardEntry.length > 0 ? ` · ${cardEntry.length} cards tracked` : ""}
+        </Text>
+        {(
+          [
+            ["↶ Undo last coup", history.length === 0, "undo"],
+            ["Redo ↷", future.length === 0, "redo"],
+          ] as const
+        ).map(([label, disabled, type]) => (
+          <Pressable
+            key={type}
+            accessibilityRole="button"
+            accessibilityState={{ disabled }}
+            disabled={disabled}
+            onPress={() => dispatch({ type })}
+            style={({ pressed }) => [
+              local.step,
+              disabled && { opacity: 0.4 },
+              pressed && !disabled && { opacity: 0.7 },
+            ]}
+          >
+            <Text style={local.stepText}>{label}</Text>
+          </Pressable>
+        ))}
+      </View>
 
       <View style={local.mods}>
         <Chip label="P pair" active={playerPair} onPress={() => setPlayerPair((v) => !v)} />
@@ -147,7 +174,17 @@ function useLocalStyles(p: Palette) {
       borderTopColor: p.border,
       backgroundColor: p.surface,
     },
+    top: { flexDirection: "row", alignItems: "center", gap: 6 },
     line: { color: p.muted, fontSize: 12, fontWeight: "600" },
+    step: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: p.border,
+      backgroundColor: p.surface2,
+    },
+    stepText: { color: p.muted, fontSize: 12, fontWeight: "600" },
     mods: {
       flexDirection: "row",
       flexWrap: "wrap",

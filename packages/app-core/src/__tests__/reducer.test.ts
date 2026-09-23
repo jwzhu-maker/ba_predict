@@ -587,3 +587,92 @@ describe("undo leaves settings alone", () => {
     expect(undone.session.coups).toHaveLength(1);
   });
 });
+
+describe("redo", () => {
+  const recorded = () =>
+    play(
+      createInitialState(),
+      { type: "place-wager", wager: { bet: "banker", amount: 50 } },
+      { type: "add-card", rank: "9" },
+      { type: "record-coup", coup: { outcome: "player" } },
+    );
+
+  it("puts an undone coup back, money and all", () => {
+    const after = recorded();
+    const redone = play(after, { type: "undo" }, { type: "redo" });
+    expect(redone.session.coups).toEqual(after.session.coups);
+    expect(redone.session.shoe).toEqual(after.session.shoe);
+    expect(redone.session.bankroll.bankroll).toBeCloseTo(after.session.bankroll.bankroll, 8);
+    expect(redone.session.progression).toEqual(after.session.progression);
+    // The wager and cards go back into the coup they were consumed by.
+    expect(redone.pendingWager).toBeNull();
+    expect(redone.cardEntry).toEqual([]);
+    expect(redone.future).toHaveLength(0);
+  });
+
+  it("can be undone again", () => {
+    const start = createInitialState();
+    const state = play(recorded(), { type: "undo" }, { type: "redo" }, { type: "undo" });
+    expect(state.session.coups).toHaveLength(0);
+    expect(state.session.bankroll.bankroll).toBeCloseTo(start.session.bankroll.bankroll, 8);
+    expect(state.pendingWager).toEqual({ bet: "banker", amount: 50 });
+    expect(state.cardEntry).toEqual(["9"]);
+  });
+
+  it("walks several steps back and forward in order", () => {
+    const after = play(
+      createInitialState(),
+      { type: "record-coup", coup: { outcome: "player" } },
+      { type: "record-coup", coup: { outcome: "banker" } },
+      { type: "record-coup", coup: { outcome: "tie" } },
+    );
+    const back = play(after, { type: "undo" }, { type: "undo" });
+    expect(back.session.coups.map((c) => c.outcome)).toEqual(["player"]);
+    const forward = play(back, { type: "redo" });
+    expect(forward.session.coups.map((c) => c.outcome)).toEqual(["player", "banker"]);
+    expect(play(forward, { type: "redo" }).session.coups).toEqual(after.session.coups);
+  });
+
+  it("does nothing when there is nothing to redo", () => {
+    const start = recorded();
+    expect(reducer(start, { type: "redo" })).toBe(start);
+  });
+
+  it("is cleared by a new coup", () => {
+    const state = play(
+      recorded(),
+      { type: "undo" },
+      { type: "record-coup", coup: { outcome: "banker" } },
+    );
+    expect(state.future).toHaveLength(0);
+    expect(reducer(state, { type: "redo" })).toBe(state);
+  });
+
+  it("keeps a setting changed between the undo and the redo", () => {
+    const state = play(
+      recorded(),
+      { type: "undo" },
+      { type: "update-bankroll", bankroll: { stopWin: 5000 } },
+      { type: "redo" },
+    );
+    expect(state.session.bankroll.stopWin).toBe(5000);
+    expect(state.session.coups).toHaveLength(1);
+  });
+
+  it("leaves pending inputs alone when redoing a typed run", () => {
+    const state = play(
+      createInitialState(),
+      { type: "record-coups", outcomes: ["player", "banker"] },
+      { type: "undo" },
+      { type: "place-wager", wager: { bet: "player", amount: 100 } },
+      { type: "redo" },
+    );
+    expect(state.session.coups).toHaveLength(2);
+    expect(state.pendingWager).toEqual({ bet: "player", amount: 100 });
+  });
+
+  it("is not persisted", () => {
+    const state = play(recorded(), { type: "undo" });
+    expect(deserializeState(serializeState(state)).future).toEqual([]);
+  });
+});

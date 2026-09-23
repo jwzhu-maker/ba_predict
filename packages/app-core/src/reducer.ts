@@ -54,10 +54,35 @@ export interface UndoStep {
   consumed: { cardEntry: Rank[]; pendingWager: PlacedWager | null } | null;
 }
 
+/**
+ * One step on the redo stack: an undo, kept so it can be taken back.
+ *
+ * `session` is the session as it stood just before the undo, and is put
+ * back the same way undo puts a snapshot back (see `restoreSession`) — so a
+ * setting changed between the undo and the redo survives the redo too.
+ * `undone` is the undo step itself, which goes back on the undo stack so
+ * the redone action can be undone again.
+ */
+export interface RedoStep {
+  session: SessionState;
+  undone: UndoStep;
+  /**
+   * The pending inputs as they stood before the undo, when the undone
+   * action had consumed some — redoing it consumes them again. Null when it
+   * consumed nothing, and redo then leaves the pending inputs alone.
+   */
+  inputs: { cardEntry: Rank[]; pendingWager: PlacedWager | null } | null;
+}
+
 export interface AppState {
   session: SessionState;
   /** Snapshots for undo, oldest first. */
   history: UndoStep[];
+  /**
+   * Undos that can be redone, most recent last. Any new undoable action
+   * clears it: a redo only makes sense on the road it was undone from.
+   */
+  future: RedoStep[];
   /** Cards entered for the coup in progress, for composition tracking. */
   cardEntry: Rank[];
   /** The wager currently on the table, if any. */
@@ -174,6 +199,7 @@ export function createInitialState(): AppState {
   return {
     session: createSession({ rules: INITIAL_RULES, bankroll: INITIAL_BANKROLL }),
     history: [],
+    future: [],
     cardEntry: [],
     pendingWager: null,
     lastSettlement: null,
@@ -229,6 +255,8 @@ export type Action =
       outcomes: readonly Outcome[];
     }
   | { type: "undo" }
+  /** Take back the most recent undo. */
+  | { type: "redo" }
   | { type: "new-shoe"; now?: number }
   | { type: "reset-session" }
   | { type: "end-session"; now?: number }
@@ -304,8 +332,11 @@ function settledProfit(coups: readonly CoupRecord[]): number {
  * The delta is computed from the two coup lists rather than from "the last
  * coup", because `new-shoe` is undoable too and removes no coups at all;
  * there the two lists agree and the delta is zero.
+ *
+ * Redo uses the same function with the post-action snapshot: the coups come
+ * back and the delta, now negative, puts their profit back in the bankroll.
  */
-function undoSession(current: SessionState, snapshot: SessionState): SessionState {
+function restoreSession(current: SessionState, snapshot: SessionState): SessionState {
   const undoneProfit = settledProfit(current.coups) - settledProfit(snapshot.coups);
   return {
     ...current,
@@ -400,6 +431,7 @@ function closeSession(
       }),
     ),
     history: [],
+    future: [],
     cardEntry: [],
     pendingWager: null,
     // `skipNextCoup` is documented as per-coup; a brand-new session opening
@@ -535,6 +567,7 @@ function reduceAction(state: AppState, action: Action): AppState {
         // The cards went into the coup and the wager settled, so undo has
         // to hand both back.
         history: remember(state, true),
+        future: [],
         session: { ...session, firstWagerAt },
         cardEntry: [],
         pendingWager: null,
@@ -558,6 +591,7 @@ function reduceAction(state: AppState, action: Action): AppState {
         // consumes nothing and taking the run back leaves whatever is
         // pending alone — including inputs entered after the run.
         history: remember(state, false),
+        future: [],
         session,
         // `cardEntry` and `pendingWager` belong to the coup still to come,
         // and none of these settled it, so both are left standing.
@@ -570,12 +604,39 @@ function reduceAction(state: AppState, action: Action): AppState {
       return {
         ...state,
         // Not `previous.session` wholesale: that reverts settings changed since.
-        session: undoSession(state.session, previous.session),
+        session: restoreSession(state.session, previous.session),
         history: state.history.slice(0, -1),
+        future: [
+          ...state.future,
+          {
+            session: state.session,
+            undone: previous,
+            inputs: previous.consumed
+              ? { cardEntry: state.cardEntry, pendingWager: state.pendingWager }
+              : null,
+          },
+        ],
         // What the undone action consumed, or what stands now if it
         // consumed nothing. See `UndoStep`.
         cardEntry: previous.consumed ? previous.consumed.cardEntry : state.cardEntry,
         pendingWager: previous.consumed ? previous.consumed.pendingWager : state.pendingWager,
+        lastSettlement: null,
+      };
+    }
+
+    case "redo": {
+      const next = state.future[state.future.length - 1];
+      if (!next) return state;
+      return {
+        ...state,
+        // The same field-by-field restore as undo, pointed the other way:
+        // the coups and the shoe come back, the balance moves by the
+        // redone coups' profit, and settings changed since stay as they are.
+        session: restoreSession(state.session, next.session),
+        history: [...state.history, next.undone],
+        future: state.future.slice(0, -1),
+        cardEntry: next.inputs ? next.inputs.cardEntry : state.cardEntry,
+        pendingWager: next.inputs ? next.inputs.pendingWager : state.pendingWager,
         lastSettlement: null,
       };
     }
@@ -590,6 +651,7 @@ function reduceAction(state: AppState, action: Action): AppState {
         // A new shoe throws the pending inputs away below, so undo puts
         // them back.
         history: remember(state, true),
+        future: [],
         session: {
           ...state.session,
           shoe: createShoe(state.session.rules.decks),

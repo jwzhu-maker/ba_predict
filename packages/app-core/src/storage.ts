@@ -34,7 +34,7 @@ function parseAcknowledgedStop(value: unknown): ReachedStop | null {
 
 /** The slice of state worth keeping across launches. */
 export function serializeState(state: AppState): string {
-  const { history: _history, ...rest } = state;
+  const { history: _history, future: _future, ...rest } = state;
   return JSON.stringify(rest);
 }
 
@@ -86,6 +86,7 @@ export function deserializeState(raw: string | null | undefined): AppState {
       // Undo history is deliberately not restored: it is a stack of whole
       // sessions, and "undo across a relaunch" is not a promise worth making.
       history: [],
+      future: [],
       cardEntry: [],
       pendingWager: null,
       lastSettlement: null,

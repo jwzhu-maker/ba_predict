@@ -43,9 +43,14 @@ const KEY_OUTCOMES: Record<string, Outcome> = {
  *     answer and the card count all have to be set BEFORE the result is
  *     recorded, and a pinned button whose inputs are two screens away
  *     records whatever those inputs happened to be left at.
+ *
+ * Undo and Redo share the top line with the stake, at the far end from the
+ * buttons: a mis-tap is noticed the moment it lands, so taking it back has
+ * to be as close to hand as the tap was — but small, and a row away, so it
+ * is not what the thumb hits while tapping P and B.
  */
 export default function RecordDock() {
-  const { session, pendingWager, cardEntry } = useAppState();
+  const { session, pendingWager, cardEntry, history, future } = useAppState();
   const dispatch = useDispatch();
   const money = useMoney();
   // What the Bet card is showing. Recording settles against it, so the two
@@ -155,12 +160,32 @@ export default function RecordDock() {
 
   return (
     <div className="record-dock">
-      <p className="record-dock-line">
-        {settling
-          ? `${money.format(settling.amount)} on ${betLabel(settling.bet)}`
-          : "Nothing staked — road only"}
-        {cardEntry.length > 0 ? ` · ${cardEntry.length} cards tracked` : null}
-      </p>
+      <div className="record-dock-top">
+        <p className="record-dock-line">
+          {settling
+            ? `${money.format(settling.amount)} on ${betLabel(settling.bet)}`
+            : "Nothing staked — road only"}
+          {cardEntry.length > 0 ? ` · ${cardEntry.length} cards tracked` : null}
+        </p>
+        <div className="record-dock-history">
+          <button
+            type="button"
+            className="chip chip-small"
+            disabled={history.length === 0}
+            onClick={() => dispatch({ type: "undo" })}
+          >
+            ↶ Undo last coup
+          </button>
+          <button
+            type="button"
+            className="chip chip-small"
+            disabled={future.length === 0}
+            onClick={() => dispatch({ type: "redo" })}
+          >
+            Redo ↷
+          </button>
+        </div>
+      </div>
 
       <div className="record-dock-mods">
         <button

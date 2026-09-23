@@ -168,6 +168,25 @@ select {
   background: var(--surface);
 }
 
+.record-dock-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.record-dock-history {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.record-dock-history .chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .record-dock-line {
   margin: 0;
   font-size: 0.74rem;
