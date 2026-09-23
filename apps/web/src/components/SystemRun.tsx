@@ -131,6 +131,9 @@ export default function SystemRun() {
           The table maximum held {run.clippedBets} bet{run.clippedBets === 1 ? "" : "s"} below what
           the ladder asked for, so this is what the rule managed at your table rather than the
           rule as written.
+          {run.config.staking === "martingale"
+            ? " At the clipped top stake, the two net wins that end a hold no longer cover the climb's losses."
+            : null}
         </Notice>
       ) : null}
 

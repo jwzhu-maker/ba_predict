@@ -687,3 +687,40 @@ describe("tap sound", () => {
     expect(deserializeState(serializeState(start)).tapSound).toBe(true);
   });
 });
+
+describe("redo boundaries", () => {
+  it("is cleared by a deck change, which starts a new shoe", () => {
+    const state = play(
+      createInitialState(),
+      { type: "record-coup", coup: { outcome: "player" } },
+      { type: "undo" },
+      { type: "update-rules", rules: { decks: 12 } },
+    );
+    expect(state.future).toHaveLength(0);
+    expect(reducer(state, { type: "redo" })).toBe(state);
+    expect(state.session.shoe.decks).toBe(12);
+  });
+
+  it("survives a rule change that keeps the shoe", () => {
+    const state = play(
+      createInitialState(),
+      { type: "record-coup", coup: { outcome: "player" } },
+      { type: "undo" },
+      { type: "update-rules", rules: { tiePayout: 9 } },
+    );
+    expect(state.future).toHaveLength(1);
+  });
+
+  it("brings back the settlement of the coup it redoes", () => {
+    // Big with no card count cannot be settled exactly: the warning must
+    // return with the coup, not vanish after Undo then Redo.
+    const recorded = play(
+      createInitialState(),
+      { type: "place-wager", wager: { bet: "big", amount: 50 } },
+      { type: "record-coup", coup: { outcome: "banker" } },
+    );
+    expect(recorded.lastSettlement?.unsettled).toBeTruthy();
+    const redone = play(recorded, { type: "undo" }, { type: "redo" });
+    expect(redone.lastSettlement).toEqual(recorded.lastSettlement);
+  });
+});

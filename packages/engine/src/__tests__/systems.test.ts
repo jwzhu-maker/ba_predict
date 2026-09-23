@@ -709,3 +709,16 @@ describe("Reverse Streak 4 Martingale", () => {
     ]);
   });
 });
+
+describe("Reverse Streak 4 Martingale after its target", () => {
+  it("opens no reporting groups once it has stopped", () => {
+    // Target on hand 20 (group 2, step 2); hands 21-40 are past it.
+    const result = run(shoeFromResults("W".repeat(8) + "WL".repeat(10)), {
+      system: "reverse-streak-4-martingale",
+    });
+    expect(result.targetReachedAt).toBe(20);
+    expect(result.groups.map((group) => group.group)).toEqual([1, 2]);
+    expect(result.groups.every((group) => group.bets > 0)).toBe(true);
+    expect(result.hands.slice(20).every((hand) => hand.group === null)).toBe(true);
+  });
+});

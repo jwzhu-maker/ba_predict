@@ -52,6 +52,11 @@ export interface UndoStep {
   session: SessionState;
   /** What the undone action took, or null when it took nothing. */
   consumed: { cardEntry: Rank[]; pendingWager: PlacedWager | null } | null;
+  /**
+   * The settlement the action produced, when it settled one, so a redo can
+   * put back the warning a partial settlement showed. Absent otherwise.
+   */
+  settlement?: Settlement | null;
 }
 
 /**
@@ -576,11 +581,13 @@ function reduceAction(state: AppState, action: Action): AppState {
       // launched.
       const firstWagerAt =
         session.firstWagerAt ?? (settlement ? (action.now ?? Date.now()) : null);
+      const history = remember(state, true);
+      history[history.length - 1] = { ...history[history.length - 1]!, settlement };
       return {
         ...state,
         // The cards went into the coup and the wager settled, so undo has
         // to hand both back.
-        history: remember(state, true),
+        history,
         future: [],
         session: { ...session, firstWagerAt },
         cardEntry: [],
@@ -651,7 +658,9 @@ function reduceAction(state: AppState, action: Action): AppState {
         future: state.future.slice(0, -1),
         cardEntry: next.inputs ? next.inputs.cardEntry : state.cardEntry,
         pendingWager: next.inputs ? next.inputs.pendingWager : state.pendingWager,
-        lastSettlement: null,
+        // What the redone coup settled, so a warning it raised (a wager the
+        // engine could not settle exactly) comes back with it.
+        lastSettlement: next.undone.settlement ?? null,
       };
     }
 
@@ -721,6 +730,10 @@ function reduceAction(state: AppState, action: Action): AppState {
       return {
         ...state,
         shoeArchive: decksChanged ? fileShoe(state, Date.now()) : state.shoeArchive,
+        // A deck change starts a new shoe of a different size. A redo from
+        // before it would put the old shoe back under the new deck count,
+        // so the redo branch ends here.
+        future: decksChanged ? [] : state.future,
         session: syncProgressionOptions({
           ...state.session,
           rules,

@@ -356,9 +356,18 @@ describe("Reverse Streak 4 Martingale copy", () => {
     const rules = describeSystemRules(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG, money);
     expect(rules).toContain("1, 2, 4 and 8 units");
     expect(rules).toContain("double after each loss");
-    expect(rules).toContain("holds the stake there until 2 net wins");
+    expect(rules).toContain("back to one unit after a win below the top");
+    expect(rules).toContain("a win while holding does not reset it");
+    expect(rules).toContain("until it is 2 net wins up at that stake");
+    expect(rules).not.toContain("after any win");
     expect(rules).toContain("wins outnumber losses by 8");
     expect(rules).toContain("stops after hand 60");
+  });
+
+  it("says the target can end the shoe early", () => {
+    expect(describeBetRate(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG)).toBe(
+      "On a full shoe it stakes every one of the 48 hands from 13 to 60, unless it gets 8 wins ahead first and stops there.",
+    );
   });
 
   it("tops out at eight units", () => {

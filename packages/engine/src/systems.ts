@@ -386,6 +386,10 @@ function advanceStake(config: BettingSystemConfig, state: StakeState, won: boole
     return;
   }
   if (state.holding) {
+    // Counted in wins, not money, as the rule is written. At full stake two
+    // net wins more than cover the climb (8 + 8 > 1 + 2 + 4 + 8); when the
+    // table maximum clips the top stake they may not, and the run card says
+    // so rather than this quietly holding longer than the rule asks.
     state.holdNet += won ? 1 : -1;
     if (state.holdNet >= (config.recoveryWins ?? 2)) Object.assign(state, FRESH_STAKE);
     return;
@@ -535,7 +539,10 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
 
     let group: number | null = null;
     let step: number | null = null;
-    if (!warmingUp && !pastEnd) {
+    // Once the net-wins target has stopped the run, the rest of the shoe is
+    // outside it: no group is opened, so none is reported as a group that
+    // was never bet or counted towards the clean-group rate.
+    if (!warmingUp && !pastEnd && targetReachedAt === null) {
       const offset = hand - firstBettingHand;
       group = Math.floor(offset / config.groupSize) + 1;
       step = (offset % config.groupSize) + 1;

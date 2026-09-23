@@ -157,7 +157,7 @@ export function describeSystemRules(config: BettingSystemConfig, money: SystemCo
   const recovery = config.recoveryWins ?? 2;
   const ladder =
     config.staking === "martingale"
-      ? `Every hand after that carries a stake of ${martingaleUnits(config)} in turn, one unit being ${money.format(config.baseStake)}: double after each loss, back to one unit after any win. A loss at ${money.format(topStake(config))} holds the stake there until ${recovery} net win${recovery === 1 ? "" : "s"} at it have won back the climb, then it drops to one unit.`
+      ? `Every hand after that carries a stake of ${martingaleUnits(config)} in turn, one unit being ${money.format(config.baseStake)}: double after each loss, back to one unit after a win below the top. A loss at ${money.format(topStake(config))} holds the stake there — a win while holding does not reset it — until it is ${recovery} net win${recovery === 1 ? "" : "s"} up at that stake, then it drops to one unit.`
       : config.groupsGateBetting
     ? `Groups of ${config.groupSize}, opening at ${money.format(config.baseStake)} and adding ${money.format(config.stakeStep)} after each win, stopping the group on its first loss.`
     : `Every hand after that carries a stake: ${money.format(config.baseStake)}, adding ${money.format(config.stakeStep)} after each win up to ${money.format(topStake(config))}, and back to ${money.format(config.baseStake)} after a ${ordinal(config.maxLadderSteps)} straight win or after any loss.`;
@@ -184,7 +184,7 @@ export function describeSystemRules(config: BettingSystemConfig, money: SystemCo
  */
 export function describeRunShape(config: BettingSystemConfig): string {
   if (config.staking === "martingale") {
-    return `every hand is staked and a loss doubles the next one, so most losses are won back one unit at a time — until four losses in a row, which cost ${martingaleUnits(config).replace(/.* and /, "")} on the last alone and then need ${config.recoveryWins ?? 2} net wins at that stake to recover. Doubling changes when the money moves, not the house edge on it.`;
+    return `every hand is staked and a loss doubles the next one, so most losses are won back one unit at a time — until four losses in a row, which cost ${martingaleUnits(config).replace(/.* and /, "")} on the last alone and then hold there until it is ${config.recoveryWins ?? 2} net wins up at that stake. Doubling changes when the money moves, not the house edge on it.`;
   }
   if (config.groupsGateBetting) {
     return `a group stops at its first loss, so it lands about ${expectedBetsPerGroup(config).toFixed(1)} bets on average rather than ${config.groupSize}, and the top of the ladder is reached roughly once in ${oddsOfReachingTopStep(config.maxLadderSteps)} groups.`;
@@ -224,7 +224,9 @@ export function describeBetRate(config: BettingSystemConfig): string | null {
 
   const where = `of the ${range} hands from ${config.lookback + 1} to ${config.lastHand}`;
   if (!config.groupsGateBetting) {
-    return `On a full shoe it stakes every one ${where}.`;
+    return config.stopAtNetWins != null
+      ? `On a full shoe it stakes every one ${where}, unless it gets ${config.stopAtNetWins} wins ahead first and stops there.`
+      : `On a full shoe it stakes every one ${where}.`;
   }
   const expected = Math.round((range / config.groupSize) * expectedBetsPerGroup(config));
   return `On a full shoe it stakes about ${expected} ${where} and sits out the rest.`;
