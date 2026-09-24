@@ -8,7 +8,7 @@ import {
   type Outcome,
   type RoadSet,
 } from "@ba-predict/engine";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { ROAD_CELL, usePalette, type Palette } from "../theme";
 import { Card, Hint } from "./ui";
@@ -70,12 +70,30 @@ function useRoadStyles(p: Palette) {
   );
 }
 
-/** Render a fixed-height board as rows, inside a horizontal scroller. */
-function Board({ rows }: { rows: React.ReactNode[][] }) {
+/**
+ * Render a fixed-height board as rows, inside a horizontal scroller.
+ *
+ * Boards grow at the right and the newest marks are the ones that matter,
+ * so whenever the board widens — and on first draw — the scroller jumps to
+ * its right edge. Scrolling back to read older columns is left alone until
+ * the board next widens.
+ */
+function Board({ rows, marks }: { rows: React.ReactNode[][]; marks: number }) {
   const p = usePalette();
   const s = useRoadStyles(p);
+  const scroller = useRef<ScrollView>(null);
+  // A mark added lower in an existing column does not change the content
+  // size, so `onContentSizeChange` alone misses it; the mark count does not.
+  useEffect(() => {
+    scroller.current?.scrollToEnd({ animated: false });
+  }, [marks]);
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+    <ScrollView
+      ref={scroller}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: false })}
+    >
       <View style={s.board}>
         {rows.map((cells, row) => (
           <View key={row} style={s.row}>
@@ -115,7 +133,7 @@ export function BeadPlate({ roads }: { roads: RoadSet }) {
   });
 
   fill(grid, s.cell);
-  return <Board rows={grid} />;
+  return <Board rows={grid} marks={roads.beadPlate.length} />;
 }
 
 export function BigRoad({ roads }: { roads: RoadSet }) {
@@ -144,7 +162,11 @@ export function BigRoad({ roads }: { roads: RoadSet }) {
   }
 
   fill(grid, s.cell);
-  return <Board rows={grid} />;
+  return <Board
+      rows={grid}
+      // Ties fold into the last cell rather than adding one, so they count too.
+      marks={layout.placements.reduce((count, placement) => count + 1 + placement.cell.ties, 0)}
+    />;
 }
 
 /**
@@ -210,7 +232,7 @@ export function DerivedRoad({
   }
 
   fill(grid, s.cell);
-  return <Board rows={grid} />;
+  return <Board rows={grid} marks={marks.length} />;
 }
 
 /** Pad the empty squares so every row keeps the board's width. */

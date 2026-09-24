@@ -1,11 +1,15 @@
 import { betLabel, type Outcome } from "@ba-predict/engine";
 import { useCallback, useEffect, useState } from "react";
 import { callToWager } from "@ba-predict/app-core";
+import { formatUnits } from "../lib/format";
+import { revealRoad } from "../lib/reveal-road";
+import { tapFeedback } from "../lib/tap-feedback";
 import {
   useAppState,
   useDispatch,
   useMoney,
   usePendingStop,
+  useSystemRun,
   useTableCall,
 } from "../state/store";
 
@@ -43,15 +47,45 @@ const KEY_OUTCOMES: Record<string, Outcome> = {
  *     answer and the card count all have to be set BEFORE the result is
  *     recorded, and a pinned button whose inputs are two screens away
  *     records whatever those inputs happened to be left at.
+ *
+ * The top row is the next bet — side, amount and how many units that is —
+ * because the dock is the one thing on screen wherever the page is
+ * scrolled, and the Bet card that also says it is not. Recording a result
+ * then scrolls "The road" into view, so the page shows the road the result
+ * just extended rather than wherever it was left.
+ *
+ * Undo and Redo share the second line, at the far end from the buttons: a
+ * mis-tap is noticed the moment it lands, so taking it back has to be as
+ * close to hand as the tap was — but small, and rows away, so it is not
+ * what the thumb hits while tapping P and B.
  */
 export default function RecordDock() {
-  const { session, pendingWager, cardEntry } = useAppState();
+  const { session, pendingWager, cardEntry, history, future, tapSound } = useAppState();
   const dispatch = useDispatch();
   const money = useMoney();
   // What the Bet card is showing. Recording settles against it, so the two
   // can never disagree about the money that moved.
   const call = useTableCall();
   const settling = pendingWager ?? callToWager(call);
+  // What the app is pointing at, staked or not. When it is not staked (a
+  // skip, observe mode, a stop) it is still shown, marked as such, because
+  // "the rule wants Banker 150 and I am not taking it" is information.
+  const nextBet =
+    settling ??
+    (call.bet !== null && call.amount > 0
+      ? { bet: call.bet, amount: call.amount }
+      : call.skippedSuggestion
+        ? { bet: call.skippedSuggestion.bet, amount: call.skippedSuggestion.amount }
+        : null);
+  // Units are counted in whatever is setting the stake: a betting system's
+  // own base stake while it is the one speaking ("1, 2, 4, 8 units" is how
+  // its rule reads), otherwise the unit size from Settings.
+  const { run } = useSystemRun();
+  // A skipped call keeps the source of what it declined, so skipping a
+  // system's bet does not re-count it in the Settings unit.
+  const speaking = call.source === "skipped" ? call.skippedSuggestion?.source : call.source;
+  const unitSize = speaking === "system" ? run.config.baseStake : session.bankroll.unitSize;
+  const units = nextBet && unitSize > 0 ? nextBet.amount / unitSize : null;
   // A limit waiting to be answered blocks the screen; the keys must not be
   // a way around it. The buttons are covered by the dialog, the keys are
   // not attached to anything the dialog can cover.
@@ -80,6 +114,8 @@ export default function RecordDock() {
 
   const record = useCallback(
     (outcome: Outcome) => {
+      // First, so the buzz lands with the tap rather than after the render.
+      tapFeedback(tapSound);
       dispatch({
         type: "record-coup",
         wager: callToWager(call),
@@ -95,8 +131,9 @@ export default function RecordDock() {
       setBankerPair(false);
       setCardCount(null);
       setBankerWinOnSix(false);
+      revealRoad();
     },
-    [call, dispatch, playerPair, bankerPair, cardCount, bankerWinOnSix, noCommissionTable],
+    [call, dispatch, playerPair, bankerPair, cardCount, bankerWinOnSix, noCommissionTable, tapSound],
   );
 
   /**
@@ -155,12 +192,55 @@ export default function RecordDock() {
 
   return (
     <div className="record-dock">
-      <p className="record-dock-line">
-        {settling
-          ? `${money.format(settling.amount)} on ${betLabel(settling.bet)}`
-          : "Nothing staked — road only"}
-        {cardEntry.length > 0 ? ` · ${cardEntry.length} cards tracked` : null}
+      <p
+        className={`record-dock-next${nextBet ? ` record-dock-next-${nextBet.bet}` : ""}`}
+        aria-live="polite"
+      >
+        <span className="record-dock-label">Next bet</span>
+        {nextBet ? (
+          <>
+            <strong className="record-dock-next-side">{betLabel(nextBet.bet)}</strong>
+            <strong>{money.format(nextBet.amount)}</strong>
+            {units !== null ? (
+              <span
+                className="record-dock-next-units"
+                title={`One unit is ${money.format(unitSize)}`}
+              >
+                = {formatUnits(units)} {units === 1 ? "unit" : "units"}
+              </span>
+            ) : null}
+            {settling ? null : <span className="record-dock-next-off">not staked</span>}
+          </>
+        ) : (
+          <span className="record-dock-next-none">No bet — road only</span>
+        )}
       </p>
+
+      <div className="record-dock-top">
+        <p className="record-dock-line">
+          {!settling && nextBet ? (call.blockedReason ?? "Recording will not stake it") : null}
+          {!settling && nextBet && cardEntry.length > 0 ? " · " : null}
+          {cardEntry.length > 0 ? `${cardEntry.length} cards tracked` : null}
+        </p>
+        <div className="record-dock-history">
+          <button
+            type="button"
+            className="chip chip-small"
+            disabled={history.length === 0}
+            onClick={() => dispatch({ type: "undo" })}
+          >
+            ↶ Undo last coup
+          </button>
+          <button
+            type="button"
+            className="chip chip-small"
+            disabled={future.length === 0}
+            onClick={() => dispatch({ type: "redo" })}
+          >
+            Redo ↷
+          </button>
+        </div>
+      </div>
 
       <div className="record-dock-mods">
         <button

@@ -194,18 +194,14 @@ export default function TableScreen() {
 
       {/*
         Recording moved to `RecordDock`, pinned above the tab bar. What is
-        left are the two actions taken once in a while rather than once a
-        hand — see the web `CoupEntry` for the same split.
+        left is the action taken once in a while rather than once a hand —
+        Undo and Redo went to the dock with the buttons they correct. See the
+        web `CoupEntry` for the same split.
       */}
-      <Card title="This shoe" subtitle="Fixing a mis-tap, and starting the next one">
+      <Card title="This shoe" subtitle="Starting the next one">
         {lastSettlement?.unsettled ? <Notice tone="warn">{lastSettlement.unsettled}</Notice> : null}
 
         <Row>
-          <Btn
-            label="Undo last coup"
-            disabled={session.coups.length === 0}
-            onPress={() => dispatch({ type: "undo" })}
-          />
           <Btn label="New shoe" onPress={() => dispatch({ type: "new-shoe" })} />
         </Row>
 

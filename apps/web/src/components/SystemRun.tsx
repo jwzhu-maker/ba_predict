@@ -1,9 +1,7 @@
 import {
   bettableHands,
+  describeRunShape,
   describeSystemRules,
-  expectedBetsPerGroup,
-  oddsOfReachingTopStep,
-  oddsOfTopStepPerHand,
 } from "@ba-predict/app-core";
 import { Card, Notice, Stat } from "./Primitives";
 import { formatPercent } from "../lib/format";
@@ -39,6 +37,18 @@ export default function SystemRun() {
     return (
       <Card title={run.name} subtitle={`Runs as you record results${preview}`}>
         <p className="prose">{describeSystemRules(run.config, money)}</p>
+      </Card>
+    );
+  }
+
+  if (run.bets === 0 && run.belowMinimumHands > 0) {
+    return (
+      <Card title={run.name} subtitle={`${run.handsAvailable} hands, nothing placed${preview}`}>
+        <p className="prose">
+          Every call so far — {run.belowMinimumHands} of them — was under your table minimum,
+          so none was placed and the rule has not moved. {run.name} opens at{" "}
+          {money.format(run.config.baseStake)}; lower the minimum in Settings to play it here.
+        </p>
       </Card>
     );
   }
@@ -103,7 +113,9 @@ export default function SystemRun() {
                 <th scope="row">
                   {group.group}
                   <span className="row-note row-note-muted">
-                    {group.perfect
+                    {run.targetReachedAt !== null && group.lastHand === run.targetReachedAt
+                      ? `hands ${group.firstHand}–${group.lastHand}, stop-win reached`
+                      : group.perfect
                       ? `hands ${group.firstHand}–${group.lastHand}, all won`
                       : group.lostAt !== null
                         ? `hands ${group.firstHand}–${group.lastHand}, lost on ${group.lostAt}`
@@ -133,6 +145,9 @@ export default function SystemRun() {
           The table maximum held {run.clippedBets} bet{run.clippedBets === 1 ? "" : "s"} below what
           the ladder asked for, so this is what the rule managed at your table rather than the
           rule as written.
+          {run.config.staking === "martingale"
+            ? " At the cut top stake, a hold lasts longer: it waits until the climb's losses are actually won back."
+            : null}
         </Notice>
       ) : null}
 
@@ -146,9 +161,7 @@ export default function SystemRun() {
       <p className="field-hint">
         One shoe of hindsight, on the hands that actually came out. What repeats is the shape,
         not the total:{" "}
-        {gated
-          ? `a group stops at its first loss, so it lands about ${expectedBetsPerGroup(run.config).toFixed(1)} bets on average rather than ${run.config.groupSize}, and the top of the ladder is reached roughly once in ${oddsOfReachingTopStep(run.config.maxLadderSteps)} groups.`
-          : `every hand in the range is staked and the ladder resets on the first loss, so the top step comes up on roughly one hand in ${oddsOfTopStepPerHand(run.config.maxLadderSteps)} and the run is many small swings rather than a few big ones.`}
+        {describeRunShape(run.config)}
       </p>
     </Card>
   );

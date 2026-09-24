@@ -32,7 +32,23 @@ import { settleWager } from "./session";
 /** Sides a system can back. Ties are never a bet here. */
 export type SystemSide = "player" | "banker";
 
-export type BettingSystemId = "reverse-12" | "reverse-streak-4";
+export type BettingSystemId = "reverse-12" | "reverse-streak-4" | "reverse-streak-4-martingale";
+
+/**
+ * How the stake moves between bets.
+ *
+ * "ladder" adds `stakeStep` after each win and drops back to the base on a
+ * loss (and after `maxLadderSteps` straight wins). "martingale" is the
+ * mirror image: it doubles after each LOSS and drops back to the base on a
+ * win, for `maxLadderSteps` stakes (1, 2, 4, 8 at four). A loss at the top
+ * stake does not double again; the stake holds there until `recoveryWins`
+ * net wins at that stake have been banked — two wins at 8 pay back the
+ * 1 + 2 + 4 + 8 the climb lost — and only then returns to the base. It
+ * also waits until the climb's money is actually back, for the cases where
+ * two wins do not pay it: a stake cut by the table maximum, Banker
+ * commission, or a loss inside the hold.
+ */
+export type SystemStaking = "ladder" | "martingale";
 
 /**
  * The knobs. Two systems share them, and the pair that separates those two is
@@ -76,6 +92,18 @@ export interface BettingSystemConfig {
    * again however the fourth went, and climb from there.
    */
   maxLadderSteps: number;
+  /** How the stake moves. Omitted means "ladder". */
+  staking?: SystemStaking;
+  /**
+   * Martingale only: net wins (wins minus losses) at the held top stake that
+   * send it back to the base. Omitted means 2.
+   */
+  recoveryWins?: number;
+  /**
+   * Stop betting for the rest of the shoe once the run's wins minus losses
+   * reaches this. Omitted or null never stops on it.
+   */
+  stopAtNetWins?: number | null;
 }
 
 export const REVERSE_TWELVE_CONFIG: BettingSystemConfig = {
@@ -99,6 +127,29 @@ export const REVERSE_STREAK_FOUR_CONFIG: BettingSystemConfig = {
   maxLadderSteps: 4,
 };
 
+/**
+ * Reverse Streak 4's side rule with a Martingale stake: 1 unit, doubled after
+ * each loss to 2, 4 and 8, back to 1 after any win. A loss at 8 holds the
+ * stake at 8 until two net wins there have recovered the climb, and the
+ * whole shoe stops once wins exceed losses by eight.
+ *
+ * `baseStake` is one unit, in currency: 50, so the stakes run 50, 100, 200
+ * and 400. Like the other two it stops after hand 60, or sooner if it
+ * reaches the net-eight target.
+ */
+export const REVERSE_STREAK_FOUR_MARTINGALE_CONFIG: BettingSystemConfig = {
+  lookback: 12,
+  groupSize: 6,
+  baseStake: 50,
+  stakeStep: 0,
+  lastHand: 60,
+  groupsGateBetting: false,
+  maxLadderSteps: 4,
+  staking: "martingale",
+  recoveryWins: 2,
+  stopAtNetWins: 8,
+};
+
 export interface BettingSystemDefinition {
   id: BettingSystemId;
   name: string;
@@ -119,6 +170,12 @@ export const BETTING_SYSTEMS: readonly BettingSystemDefinition[] = [
     summary: "The same mirror on every hand, climbing to four wins and resetting.",
     defaults: REVERSE_STREAK_FOUR_CONFIG,
   },
+  {
+    id: "reverse-streak-4-martingale",
+    name: "Reverse Streak 4 Martingale",
+    summary: "The same mirror on every hand, doubling after a loss up to 8 units, stopping at 8 net wins.",
+    defaults: REVERSE_STREAK_FOUR_MARTINGALE_CONFIG,
+  },
 ];
 
 /** The system a run falls back to when none is named. */
@@ -136,7 +193,12 @@ export function bettingSystemById(id: BettingSystemId | null | undefined): Betti
 }
 
 /** Why a hand carried no bet. */
-export type SystemSkipReason = "warm-up" | "group-over" | "past-last-hand";
+export type SystemSkipReason =
+  | "warm-up"
+  | "group-over"
+  | "past-last-hand"
+  | "target-reached"
+  | "below-minimum";
 
 /** One hand of the tie-free sequence, and what the system did with it. */
 export interface SystemHand {
@@ -224,6 +286,17 @@ export interface SystemNext {
    * warns instead, which is what every other staking surface here does.
    */
   unaffordable: boolean;
+  /**
+   * Martingale only, while the stake is held at the top: net wins banked at
+   * that stake so far (can be negative). Null whenever it is not holding.
+   */
+  holdNet: number | null;
+  /**
+   * Martingale only, while holding at the top stake: how much of the
+   * climb's loss is still to win back (0 once it is back). Null when not
+   * holding.
+   */
+  holdShortfall: number | null;
 }
 
 export interface SystemRun {
@@ -275,6 +348,110 @@ export interface SystemRun {
    * say whether the total was 6. The Banker legs are then slightly generous.
    */
   approximate: boolean;
+  /** Wins minus losses over the run. */
+  netHands: number;
+  /** The hand on which `stopAtNetWins` was reached, or null if it was not. */
+  targetReachedAt: number | null;
+  /** Hands the rule called but could not place, being under the table minimum. */
+  belowMinimumHands: number;
+}
+
+/**
+ * Where the stake stands between bets. `banked` drives a ladder; the rest
+ * drive a Martingale. A "climb" runs from a bet at one unit to the win that
+ * ends it (or the end of a hold); `climbProfit` is its running money and
+ * `climbClipped` whether the table maximum cut any of its stakes.
+ */
+interface StakeState {
+  banked: number;
+  level: number;
+  holding: boolean;
+  holdNet: number;
+  climbProfit: number;
+  climbClipped: boolean;
+}
+
+const FRESH_STAKE: StakeState = {
+  banked: 0,
+  level: 0,
+  holding: false,
+  holdNet: 0,
+  climbProfit: 0,
+  climbClipped: false,
+};
+
+function isMartingale(config: BettingSystemConfig): boolean {
+  return config.staking === "martingale";
+}
+
+/** What the rule asks to stake from this state, before any table maximum. */
+function askFor(config: BettingSystemConfig, state: StakeState): number {
+  if (isMartingale(config)) {
+    const top = Math.max(0, config.maxLadderSteps - 1);
+    return config.baseStake * 2 ** (state.holding ? top : Math.min(state.level, top));
+  }
+  return config.baseStake + state.banked * config.stakeStep;
+}
+
+/** 1-based rung the next stake sits on: the top rung while a Martingale holds. */
+function rungOf(config: BettingSystemConfig, state: StakeState): number {
+  if (isMartingale(config)) return state.holding ? config.maxLadderSteps : state.level + 1;
+  return state.banked + 1;
+}
+
+/** Move the stake on after a settled bet. Mutates `state`. */
+function advanceStake(
+  config: BettingSystemConfig,
+  state: StakeState,
+  won: boolean,
+  profit: number,
+  clipped: boolean,
+): void {
+  if (!isMartingale(config)) {
+    if (won) {
+      state.banked += 1;
+      // The cap. At four the fifth hand drops to the base however the fourth
+      // went, and climbs again from there.
+      if (state.banked >= config.maxLadderSteps) state.banked = 0;
+    } else {
+      state.banked = 0;
+    }
+    return;
+  }
+  state.climbProfit += profit;
+  if (clipped) state.climbClipped = true;
+  if (state.holding) {
+    // Two net wins, as the rule is written, AND the climb's money actually
+    // back — which is the reason for the two wins (8 + 8 > 1 + 2 + 4 + 8).
+    // Usually the wins alone do it; they fall short when the table maximum
+    // cut a stake in the climb, or when Banker commission (or a loss inside
+    // the hold) eats into what they paid.
+    state.holdNet += won ? 1 : -1;
+    const winsDone = state.holdNet >= (config.recoveryWins ?? 2);
+    const moneyBack = state.climbProfit >= -1e-9;
+    if (winsDone && moneyBack) Object.assign(state, FRESH_STAKE);
+    return;
+  }
+  if (won) {
+    const atTop = state.level + 1 >= config.maxLadderSteps;
+    if (atTop && state.climbProfit < -1e-9) {
+      // A win on the top stake that still leaves the climb behind (a high
+      // Banker commission, or a cut stake) has not recovered it: hold the
+      // top stake until the money is back too. That one win is the only
+      // win at the top so far, so the hold starts at +1, not at the target.
+      state.holding = true;
+      state.holdNet = 1;
+      return;
+    }
+    // Otherwise a win ends the climb.
+    Object.assign(state, FRESH_STAKE);
+  } else if (state.level + 1 < config.maxLadderSteps) {
+    state.level += 1;
+  } else {
+    // Lost at the top stake: hold it there rather than doubling past the cap.
+    state.holding = true;
+    state.holdNet = 0;
+  }
 }
 
 /** The opposite side. The whole of the "reverse" rule. */
@@ -325,6 +502,12 @@ export interface RunBettingSystemOptions {
   /** Table ceiling in currency. A stake above it is clipped. Null = no ceiling. */
   tableMax?: number | null;
   /**
+   * Table floor in currency. A stake below it cannot be placed, so that
+   * hand is sat out and moves nothing — the ladder, the hold and the
+   * stop-win all carry on as if it had not been dealt. Null = no floor.
+   */
+  tableMin?: number | null;
+  /**
    * Money available for the NEXT bet, used only to flag an unaffordable one.
    *
    * Deliberately not applied to the replay: that is hindsight over a shoe
@@ -374,7 +557,7 @@ function resolveConfig(
 export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
   const definition = bettingSystemById(options.system);
   const config = resolveConfig(definition.defaults, options.config);
-  const { rules, tableMax = null, bankroll = null } = options;
+  const { rules, tableMax = null, tableMin = null, bankroll = null } = options;
   const { hands: sequence, tiesRemoved } = tieFreeHands(options.coups);
 
   const hands: SystemHand[] = [];
@@ -391,11 +574,13 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
   let clippedBets = 0;
   let approximate = false;
 
-  // Live ladder state. `banked` is consecutive wins the stake is carrying;
-  // `groupDead` is the "stop until the next group" rule, which only a gated
-  // system ever sets.
-  let banked = 0;
+  // Live stake state (see `StakeState`). `groupDead` is the "stop until the
+  // next group" rule, which only a gated system ever sets; `targetReachedAt`
+  // is the "stop for the shoe" rule, which only a system with a net-wins
+  // target ever sets.
+  const stakeState: StakeState = { ...FRESH_STAKE };
   let groupDead = false;
+  let targetReachedAt: number | null = null;
   let current: SystemGroup | null = null;
 
   const firstBettingHand = config.lookback + 1;
@@ -409,7 +594,10 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
 
     let group: number | null = null;
     let step: number | null = null;
-    if (!warmingUp && !pastEnd) {
+    // Once the net-wins target has stopped the run, the rest of the shoe is
+    // outside it: no group is opened, so none is reported as a group that
+    // was never bet or counted towards the clean-group rate.
+    if (!warmingUp && !pastEnd && targetReachedAt === null) {
       const offset = hand - firstBettingHand;
       group = Math.floor(offset / config.groupSize) + 1;
       step = (offset % config.groupSize) + 1;
@@ -419,7 +607,7 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
         // the group is the unit of play. Ungated, the ladder runs straight
         // through the boundary and the group is a reporting window.
         if (config.groupsGateBetting) {
-          banked = 0;
+          Object.assign(stakeState, FRESH_STAKE);
           groupDead = false;
         }
         const covers = hand + config.groupSize - 1;
@@ -447,9 +635,11 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
       ? "past-last-hand"
       : warmingUp
         ? "warm-up"
-        : groupDead
-          ? "group-over"
-          : null;
+        : targetReachedAt !== null
+          ? "target-reached"
+          : groupDead
+            ? "group-over"
+            : null;
 
     if (skipped !== null) {
       hands.push({
@@ -473,22 +663,41 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
     const reference = sequence[referenceHand - 1]!;
     const side = opposite(reference.outcome);
 
-    const wanted = config.baseStake + banked * config.stakeStep;
+    const wanted = askFor(config, stakeState);
     const stake = tableMax === null ? wanted : Math.min(wanted, tableMax);
+    if (tableMin !== null && stake < tableMin - 1e-9) {
+      hands.push({
+        hand,
+        sourceIndex: entry.sourceIndex,
+        outcome: entry.outcome,
+        group,
+        step,
+        bet: null,
+        skipped: "below-minimum",
+        referenceHand,
+        stake: 0,
+        result: null,
+        profit: 0,
+        balance,
+      });
+      continue;
+    }
     if (stake < wanted - 1e-9) clippedBets += 1;
 
     const settlement = settleWager(
       { bet: side, amount: stake },
-      // `CoupRecord` carries outcome and the two pair flags and nothing
-      // else, so a Banker leg on a no-commission table always comes back
-      // `unsettled` here — the "slightly generous" caveat the run card
-      // shows. Fixing that means persisting `bankerWinOnSix` on the coup,
-      // which the shoe archive's one-character-per-coup encoding cannot
-      // carry as it stands. Deliberately not done here.
+      // A live coup carries `bankerWinOnSix` when the player answered it,
+      // so a no-commission Banker leg settles exactly — which matters now
+      // that the Martingale's recovery test reads this money. Coups restored
+      // from the shoe archive do not carry it, and those legs still come
+      // back `unsettled`: the run card's "slightly generous" caveat.
       {
         outcome: entry.outcome,
         playerPair: entry.coup.playerPair,
         bankerPair: entry.coup.bankerPair,
+        ...(entry.coup.bankerWinOnSix !== undefined
+          ? { bankerWinOnSix: entry.coup.bankerWinOnSix }
+          : {}),
       },
       rules,
     );
@@ -525,14 +734,16 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
     // alone would call a 5-1 group clean.
     group_.perfect = group_.lostAt === null && group_.bets === config.groupSize;
 
-    if (won) {
-      banked += 1;
-      // The cap. At four the fifth hand drops to the base however the fourth
-      // went, and climbs again from there.
-      if (banked >= config.maxLadderSteps) banked = 0;
-    } else {
-      banked = 0;
-      if (config.groupsGateBetting) groupDead = true;
+    advanceStake(config, stakeState, won, settlement.profit, stake < wanted - 1e-9);
+    if (!won && config.groupsGateBetting) groupDead = true;
+    if (
+      config.stopAtNetWins != null &&
+      targetReachedAt === null &&
+      wins - losses >= config.stopAtNetWins
+    ) {
+      targetReachedAt = hand;
+      // The group ends here too: it covers no hand the rule will play.
+      group_.lastHand = hand;
     }
 
     hands.push({
@@ -553,7 +764,7 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
 
   const target = config.lastHand;
   return {
-    next: describeNext(sequence, config, banked, groupDead, tableMax, bankroll),
+    next: describeNext(sequence, config, stakeState, groupDead, targetReachedAt !== null, tableMax, bankroll),
     id: definition.id,
     name: definition.name,
     config,
@@ -571,8 +782,13 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
     clippedBets,
     perUnit: staked === 0 ? 0 : balance / staked,
     perfectGroups: groups.filter((group) => group.perfect).length,
-    incomplete: target !== null && sequence.length < target,
+    // A run the net-wins target stopped finished by its own rule, not
+    // because the shoe ran short of hand 60.
+    incomplete: target !== null && sequence.length < target && targetReachedAt === null,
     approximate,
+    netHands: wins - losses,
+    targetReachedAt,
+    belowMinimumHands: hands.filter((row) => row.skipped === "below-minimum").length,
   };
 }
 
@@ -586,8 +802,9 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
 function describeNext(
   sequence: readonly { outcome: SystemSide }[],
   config: BettingSystemConfig,
-  banked: number,
+  stakeState: StakeState,
   groupDead: boolean,
+  targetReached: boolean,
   tableMax: number | null,
   bankroll: number | null,
 ): SystemNext {
@@ -605,10 +822,13 @@ function describeNext(
     requestedStake: 0,
     clipped: false,
     unaffordable: false,
+    holdNet: null,
+    holdShortfall: null,
   });
 
   if (config.lastHand !== null && hand > config.lastHand) return idle("past-last-hand", null, null);
   if (hand < firstBettingHand) return idle("warm-up", null, null);
+  if (targetReached) return idle("target-reached", null, null);
 
   const offset = hand - firstBettingHand;
   const group = Math.floor(offset / config.groupSize) + 1;
@@ -620,7 +840,7 @@ function describeNext(
   const opening = step === 1 && config.groupsGateBetting;
   if (!opening && groupDead) return idle("group-over", group, step);
 
-  const rungs = opening ? 0 : banked;
+  const state = opening ? FRESH_STAKE : stakeState;
   const referenceHand = hand - config.lookback;
   const reference = sequence[referenceHand - 1];
   // Defensive: with lookback >= 1 this hand always exists, because the
@@ -630,7 +850,7 @@ function describeNext(
   // The same clip the run applies. Without it the card names the ladder's
   // ask while the run books the capped amount, so the Table tab instructs a
   // stake above the table maximum.
-  const requestedStake = config.baseStake + rungs * config.stakeStep;
+  const requestedStake = askFor(config, state);
   const stake = tableMax === null ? Math.max(0, requestedStake) : Math.min(requestedStake, tableMax);
 
   return {
@@ -640,10 +860,12 @@ function describeNext(
     bet: opposite(reference.outcome),
     skipped: null,
     referenceHand,
-    ladderStep: rungs + 1,
+    ladderStep: rungOf(config, state),
     stake,
     requestedStake,
     clipped: stake < requestedStake - 1e-9,
     unaffordable: bankroll !== null && stake > bankroll + 1e-9,
+    holdNet: isMartingale(config) && state.holding ? state.holdNet : null,
+    holdShortfall: isMartingale(config) && state.holding ? Math.max(0, -state.climbProfit) : null,
   };
 }

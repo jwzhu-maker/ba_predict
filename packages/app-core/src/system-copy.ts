@@ -53,8 +53,14 @@ export function readSystemNext(run: SystemRun): SystemNextReading {
  * flagged as ending early.
  */
 export function bettableHands(run: SystemRun): number {
-  const { config, handsAvailable } = run;
-  const last = config.lastHand === null ? handsAvailable : Math.min(config.lastHand, handsAvailable);
+  const { config, handsAvailable, targetReachedAt } = run;
+  // The net-wins target ends the rule early, so hands after it were never
+  // eligible and must not sit in the denominator.
+  const last = Math.min(
+    config.lastHand ?? Infinity,
+    handsAvailable,
+    targetReachedAt ?? Infinity,
+  );
   return Math.max(0, last - config.lookback);
 }
 
@@ -107,7 +113,16 @@ export function oddsOfCleanGroup(groupSize: number): number {
 
 /** The biggest stake the ladder can ask for, before any table maximum. */
 export function topStake(config: BettingSystemConfig): number {
-  return config.baseStake + Math.max(0, config.maxLadderSteps - 1) * config.stakeStep;
+  const rungs = Math.max(0, config.maxLadderSteps - 1);
+  if (config.staking === "martingale") return config.baseStake * 2 ** rungs;
+  return config.baseStake + rungs * config.stakeStep;
+}
+
+/** "1, 2, 4 and 8 units" — a Martingale's stakes, counted in its base stake. */
+function martingaleUnits(config: BettingSystemConfig): string {
+  const units = Array.from({ length: Math.max(1, config.maxLadderSteps) }, (_, rung) => 2 ** rung);
+  const last = units.pop()!;
+  return units.length > 0 ? `${units.join(", ")} and ${last} units` : `${last} unit`;
 }
 
 const ORDINALS = [
@@ -145,16 +160,46 @@ export interface SystemCopyMoney {
 export function describeSystemRules(config: BettingSystemConfig, money: SystemCopyMoney): string {
   const opening = `Watch ${config.lookback} hands, then from hand ${config.lookback + 1} back the opposite of the hand ${config.lookback} before it.`;
 
-  const ladder = config.groupsGateBetting
+  const recovery = config.recoveryWins ?? 2;
+  const ladder =
+    config.staking === "martingale"
+      ? `Every hand after that carries a stake of ${martingaleUnits(config)} in turn, one unit being ${money.format(config.baseStake)}: double after each loss, back to one unit after a win below the top. A loss at ${money.format(topStake(config))} holds the stake there — a win while holding does not reset it — until it is ${recovery} net win${recovery === 1 ? "" : "s"} up at that stake, then it drops to one unit — once the climb's losses are actually won back, which a table maximum or Banker commission can delay.`
+      : config.groupsGateBetting
     ? `Groups of ${config.groupSize}, opening at ${money.format(config.baseStake)} and adding ${money.format(config.stakeStep)} after each win, stopping the group on its first loss.`
     : `Every hand after that carries a stake: ${money.format(config.baseStake)}, adding ${money.format(config.stakeStep)} after each win up to ${money.format(topStake(config))}, and back to ${money.format(config.baseStake)} after a ${ordinal(config.maxLadderSteps)} straight win or after any loss.`;
 
+  const target =
+    config.stopAtNetWins != null
+      ? `Once wins outnumber losses by ${config.stopAtNetWins}, it stops for the rest of the shoe. `
+      : "";
   const stop =
-    config.lastHand === null
+    target +
+    (config.lastHand === null
       ? "It runs to the end of the shoe, and ties are deleted before any of it is counted."
-      : `It stops after hand ${config.lastHand}, and ties are deleted before any of it is counted.`;
+      : `It stops after hand ${config.lastHand}, and ties are deleted before any of it is counted.`);
 
   return `${opening} ${ladder} ${stop}`;
+}
+
+/**
+ * What repeats from shoe to shoe, for the foot of the run card.
+ *
+ * Shared because both clients wrote it out, and a ladder's sentence ("the
+ * ladder resets on the first loss") is the opposite of what a Martingale
+ * does.
+ */
+export function describeRunShape(config: BettingSystemConfig): string {
+  if (config.staking === "martingale") {
+    const early =
+      config.stopAtNetWins != null
+        ? ` (until it gets ${config.stopAtNetWins} wins ahead, when it stops for the shoe)`
+        : "";
+    return `every hand is staked${early} and a loss doubles the next one, so most losses are won back one unit at a time — until four losses in a row, which cost ${martingaleUnits(config).replace(/.* and /, "")} on the last alone and then hold there until it is ${config.recoveryWins ?? 2} net wins up at that stake. Doubling changes when the money moves, not the house edge on it.`;
+  }
+  if (config.groupsGateBetting) {
+    return `a group stops at its first loss, so it lands about ${expectedBetsPerGroup(config).toFixed(1)} bets on average rather than ${config.groupSize}, and the top of the ladder is reached roughly once in ${oddsOfReachingTopStep(config.maxLadderSteps)} groups.`;
+  }
+  return `every hand in the range is staked and the ladder resets on the first loss, so the top step comes up on roughly one hand in ${oddsOfTopStepPerHand(config.maxLadderSteps)} and the run is many small swings rather than a few big ones.`;
 }
 
 /**
@@ -189,7 +234,9 @@ export function describeBetRate(config: BettingSystemConfig): string | null {
 
   const where = `of the ${range} hands from ${config.lookback + 1} to ${config.lastHand}`;
   if (!config.groupsGateBetting) {
-    return `On a full shoe it stakes every one ${where}.`;
+    return config.stopAtNetWins != null
+      ? `On a full shoe it stakes every one ${where}, unless it gets ${config.stopAtNetWins} wins ahead first and stops there.`
+      : `On a full shoe it stakes every one ${where}.`;
   }
   const expected = Math.round((range / config.groupSize) * expectedBetsPerGroup(config));
   return `On a full shoe it stakes about ${expected} ${where} and sits out the rest.`;
@@ -233,13 +280,29 @@ export function tieReconciliation(run: SystemRun): string {
  * diverge on Reverse Streak 4 the moment a hand is lost, so the two systems
  * get different lines rather than one line that is wrong for one of them.
  */
-export function nextHandDetail(run: SystemRun): string | null {
+export function nextHandDetail(
+  run: SystemRun,
+  money: SystemCopyMoney = { format: (value) => value.toFixed(2) },
+): string | null {
   const { config, next } = run;
   if (next.bet === null) return null;
 
-  const rung = config.groupsGateBetting
-    ? `group ${next.group}, bet ${next.step} of ${config.groupSize}`
-    : `ladder step ${next.ladderStep} of ${config.maxLadderSteps}`;
+  const recovery = config.recoveryWins ?? 2;
+  // While holding, the line gives both halves of what ends the hold: the
+  // net wins so far and, while the climb is still behind, the money left to
+  // win back — so the player can see why a second win did not reset it.
+  const owed =
+    next.holdShortfall !== null && next.holdShortfall > 0.005
+      ? `, ${money.format(next.holdShortfall)} still to win back`
+      : "";
+  const rung =
+    next.holdNet !== null
+      ? `holding the top stake, ${next.holdNet >= 0 ? "+" : ""}${next.holdNet} of +${recovery} net${owed}`
+      : config.staking === "martingale"
+        ? `doubling step ${next.ladderStep} of ${config.maxLadderSteps}`
+        : config.groupsGateBetting
+          ? `group ${next.group}, bet ${next.step} of ${config.groupSize}`
+          : `ladder step ${next.ladderStep} of ${config.maxLadderSteps}`;
   // No "back to the base stake" clause on step 1: the step count already
   // says so, and the extra line it wrapped to was 40px of the height this
   // card reserves to keep the Record buttons still.

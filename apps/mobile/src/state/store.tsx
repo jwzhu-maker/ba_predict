@@ -227,6 +227,9 @@ export function useSystemRun(): { run: SystemRun; finished: boolean } {
         system: activeSystem,
         rules: session.rules,
         tableMax: session.bankroll.tableMax > 0 ? session.bankroll.tableMax : null,
+        // A stake under the minimum cannot be placed, so the live run treats
+        // it as unplaced: it moves neither the ladder nor the stop-win.
+        tableMin: session.bankroll.tableMin > 0 ? session.bankroll.tableMin : null,
         // Only the NEXT bet is judged against the balance; the replay behind
         // it is hindsight and must not be re-cut to today's money.
         bankroll: session.bankroll.bankroll,
@@ -239,6 +242,7 @@ export function useSystemRun(): { run: SystemRun; finished: boolean } {
     session.previousShoeStartIndex,
     session.rules,
     session.bankroll.tableMax,
+    session.bankroll.tableMin,
     session.bankroll.bankroll,
   ]);
 }
@@ -257,6 +261,9 @@ export function useSystemRecord(): SystemRecord {
         system: activeSystem,
         rules: session.rules,
         tableMax: session.bankroll.tableMax > 0 ? session.bankroll.tableMax : null,
+        // The same floor the live run uses, so the two cards agree on which
+        // hands were bets at all.
+        tableMin: session.bankroll.tableMin > 0 ? session.bankroll.tableMin : null,
       }),
     [
       activeSystem,
@@ -265,6 +272,7 @@ export function useSystemRecord(): SystemRecord {
       session.shoeStartIndex,
       session.rules,
       session.bankroll.tableMax,
+      session.bankroll.tableMin,
     ],
   );
 }
@@ -277,6 +285,7 @@ export function useTableCall(): TableCall {
   const { session, pendingWager, skipNextCoup, activeSystem, tableMode } = useAppState();
   const advice = useAdvice();
   const { run, finished } = useSystemRun();
+  const money = useMoney();
   return useMemo(
     () =>
       resolveTableCall({
@@ -288,7 +297,9 @@ export function useTableCall(): TableCall {
         manualWager: pendingWager,
         skipped: skipNextCoup,
         bankroll: session.bankroll.bankroll,
+        tableMin: session.bankroll.tableMin,
         mode: tableMode,
+        money,
       }),
     [
       advice,
@@ -298,7 +309,9 @@ export function useTableCall(): TableCall {
       pendingWager,
       skipNextCoup,
       session.bankroll.bankroll,
+      session.bankroll.tableMin,
       tableMode,
+      money,
     ],
   );
 }

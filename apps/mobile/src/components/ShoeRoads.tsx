@@ -1,5 +1,6 @@
 import { View } from "react-native";
 import { formatPercent } from "../lib/format";
+import { roadCardRef } from "../lib/reveal-road";
 import { useRoads } from "../state/store";
 import { AskTheRoad, BeadPlate, BigRoad, DerivedRoad } from "./Roads";
 import { Card, Hint, Prose, Row, Stat } from "./ui";
@@ -9,7 +10,12 @@ import { Card, Hint, Prose, Row, Stat } from "./ui";
  *
  * Adjacency is the point: recording an outcome and watching the road move are
  * one action to a player, and putting them on separate tabs meant tapping
- * away to see the effect of what you just did.
+ * away to see the effect of what you just did. Pressing P / B / T in the
+ * record dock scrolls this card into view (see `revealRoad`), and every
+ * board keeps its newest column in view (see `Board`).
+ *
+ * Both branches are wrapped in the same View so the dock can measure the
+ * card whether or not a coup has been recorded yet.
  */
 export default function ShoeRoads() {
   const { roads, summary } = useRoads();
@@ -17,17 +23,19 @@ export default function ShoeRoads() {
 
   if (summary.total === 0) {
     return (
-      <Card title="The road" subtitle="Fills in as you record results">
-        <Prose>
-          Record a result above and the bead plate, big road and the three derived roads all
-          draw here.
-        </Prose>
-      </Card>
+      <View ref={roadCardRef} collapsable={false}>
+        <Card title="The road" subtitle="Fills in as you record results">
+          <Prose>
+            Record a result above and the bead plate, big road and the three derived roads all
+            draw here.
+          </Prose>
+        </Card>
+      </View>
     );
   }
 
   return (
-    <>
+    <View ref={roadCardRef} collapsable={false} style={{ gap: 12 }}>
       <Card title="The road" subtitle={`${summary.total} coups this shoe`}>
         <Row>
           <Stat label="Banker" value={String(summary.bankerWins)} />
@@ -85,6 +93,6 @@ export default function ShoeRoads() {
       </Card>
 
       <AskTheRoad roads={roads} />
-    </>
+    </View>
   );
 }

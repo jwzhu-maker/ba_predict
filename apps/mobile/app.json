@@ -20,6 +20,7 @@
     },
     "android": {
       "package": "com.jwzhumaker.bapredict",
+      "permissions": ["android.permission.VIBRATE"],
       "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",

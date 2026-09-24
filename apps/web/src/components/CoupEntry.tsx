@@ -8,18 +8,19 @@ import { Card, Notice } from "./Primitives";
  * run of them at once.
  *
  * Recording ONE is not here any more: P / B / T and the per-coup modifiers
- * moved to `RecordDock`, pinned to the bottom of the screen. What is left
- * are the actions taken once in a while rather than once a hand — undoing a
- * mis-tap, swapping the cards, and typing in a road that was dealt before
- * the app was watching — plus the notice for a wager the engine could not
- * settle exactly.
+ * moved to `RecordDock`, pinned to the bottom of the screen, and Undo and
+ * Redo went with them — a mis-tap is fixed where it was made. What is left
+ * are the actions taken once in a while rather than once a hand — swapping
+ * the cards, and typing in a road that was dealt before the app was
+ * watching — plus the notice for a wager the engine could not settle
+ * exactly.
  *
- * Those stay in a card on purpose. Docking is for the control used on every
- * hand; an action that throws away the last result, or adds thirty at once,
+ * Those stay in a card on purpose. Docking is for the controls used around
+ * every hand; an action that ends the shoe, or adds thirty results at once,
  * wants to be a deliberate scroll away, not under the thumb tapping P and B.
  */
 export default function CoupEntry() {
-  const { session, lastSettlement } = useAppState();
+  const { lastSettlement } = useAppState();
   const dispatch = useDispatch();
 
   const [run, setRun] = useState("");
@@ -33,18 +34,10 @@ export default function CoupEntry() {
   };
 
   return (
-    <Card title="This shoe" subtitle="Fixing a mis-tap, and starting the next one">
+    <Card title="This shoe" subtitle="Starting the next one, and catching up on this one">
       {lastSettlement?.unsettled ? <Notice tone="warn">{lastSettlement.unsettled}</Notice> : null}
 
       <div className="button-row">
-        <button
-          type="button"
-          className="button"
-          disabled={session.coups.length === 0}
-          onClick={() => dispatch({ type: "undo" })}
-        >
-          Undo last coup
-        </button>
         <button type="button" className="button" onClick={() => dispatch({ type: "new-shoe" })}>
           New shoe
         </button>

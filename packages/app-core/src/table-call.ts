@@ -5,7 +5,7 @@ import {
   type PlacedWager,
   type SystemRun,
 } from "@ba-predict/engine";
-import { nextHandDetail } from "./system-copy";
+import { nextHandDetail, type SystemCopyMoney } from "./system-copy";
 
 /**
  * What the app is telling you to do on the very next coup — one answer, from
@@ -80,6 +80,11 @@ export interface TableCall {
   unaffordable: boolean;
   /** Whether the engine's own sizing sentence still describes the stake. */
   engineSizes: boolean;
+  /**
+   * On a skipped coup, what the app would otherwise have pointed at, so the
+   * record dock can still show "Banker 100, not staked". Null otherwise.
+   */
+  skippedSuggestion: { bet: BetType; amount: number; source: TableCallSource } | null;
 }
 
 export interface TableCallInput {
@@ -101,8 +106,16 @@ export interface TableCallInput {
   skipped: boolean;
   /** Money left, so an unaffordable call can be refused. */
   bankroll: number;
+  /**
+   * The table's minimum bet. A system's stake is fixed by its rule, so one
+   * below the minimum cannot be placed and is refused rather than raised.
+   * Omitted means no minimum.
+   */
+  tableMin?: number;
   /** "observe" keeps score without ever staking. */
   mode: TableMode;
+  /** Formats money in the detail line. Omitted uses plain two decimals. */
+  money?: SystemCopyMoney;
 }
 
 const IDLE = {
@@ -113,6 +126,7 @@ const IDLE = {
   unaffordable: false,
   engineSizes: false,
   blockedReason: null,
+  skippedSuggestion: null,
 } as const;
 
 /** The instruction, before anything that might refuse to act on it. */
@@ -132,6 +146,7 @@ function pointAt(input: TableCallInput): TableCall {
   }
 
   if (skipped) {
+    const declined = pointAt({ ...input, skipped: false });
     return {
       ...IDLE,
       source: "skipped",
@@ -139,6 +154,10 @@ function pointAt(input: TableCallInput): TableCall {
       amount: 0,
       stakes: false,
       noBetReason: "You are sitting this coup out.",
+      skippedSuggestion:
+        declined.bet !== null && declined.amount > 0
+          ? { bet: declined.bet, amount: declined.amount, source: declined.source }
+          : null,
     };
   }
 
@@ -165,7 +184,7 @@ function pointAt(input: TableCallInput): TableCall {
       noBetReason: null,
       // Shared with the system's own card, because the two sit one above
       // the other and a group step is not a ladder rung on every system.
-      detail: nextHandDetail(run),
+      detail: nextHandDetail(run, input.money),
       requestedAmount: next.clipped ? next.requestedStake : null,
       clipped: next.clipped,
     };
@@ -212,7 +231,7 @@ function pointAt(input: TableCallInput): TableCall {
 
 export function resolveTableCall(input: TableCallInput): TableCall {
   const call = pointAt(input);
-  const { advice, bankroll, mode } = input;
+  const { advice, bankroll, mode, tableMin = 0 } = input;
 
   if (!call.stakes || call.bet === null) return call;
 
@@ -227,6 +246,8 @@ export function resolveTableCall(input: TableCallInput): TableCall {
       ? "Observing — recording results keeps score without staking anything."
       : unaffordable
         ? "More than your bankroll has left, so nothing will be staked."
+        : call.source === "system" && call.amount < tableMin - 1e-9
+          ? "Below the table minimum, so nothing will be staked. Raise the system's unit or lower the minimum in Settings."
         : advice.action === "stop"
           ? "Your stop is reached, so nothing will be staked."
           : advice.action === "shuffle"
@@ -259,6 +280,8 @@ function describeSystemSkip(run: SystemRun): string {
       return `Group ${next.group} lost, so ${run.name} sits out the rest of it.`;
     case "past-last-hand":
       return `Done for this shoe — hand ${config.lastHand} is the last one ${run.name} plays.`;
+    case "target-reached":
+      return `Done for this shoe — ${run.name} is ${config.stopAtNetWins} hands up, its stop-win.`;
     default:
       return `${run.name} is not betting this coup.`;
   }

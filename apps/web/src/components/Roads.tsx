@@ -6,7 +6,7 @@ import {
   type DerivedMark,
   type RoadSet,
 } from "@ba-predict/engine";
-import { useMemo } from "react";
+import { Children, useLayoutEffect, useMemo, useRef } from "react";
 import { Card } from "./Primitives";
 
 const ROWS = 6;
@@ -15,13 +15,31 @@ function GridShell({
   columns,
   children,
   label,
+  revision = 0,
 }: {
   columns: number;
   children: React.ReactNode;
   label: string;
+  /**
+   * Anything else that changes what the newest mark shows without adding a
+   * mark — a tie on the Big Road bumps the last cell's tie count.
+   */
+  revision?: number;
 }) {
+  // Boards read left to right and grow at the right, so the newest marks
+  // are the ones that matter. Whenever a mark or a column is added — and on
+  // first draw, e.g. coming back to the tab — the scroller jumps to its
+  // right edge. Scrolling back to read older columns is left alone until
+  // the board next grows.
+  const scroller = useRef<HTMLDivElement>(null);
+  const marks = Children.count(children);
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    if (element) element.scrollLeft = element.scrollWidth;
+  }, [columns, marks, revision]);
+
   return (
-    <div className="road-scroll">
+    <div className="road-scroll" ref={scroller}>
       <div
         className="road-grid"
         role="img"
@@ -60,7 +78,11 @@ export function BeadPlate({ roads }: { roads: RoadSet }) {
 export function BigRoad({ roads }: { roads: RoadSet }) {
   const layout = useMemo(() => layoutBigRoad(roads.bigRoad, ROWS), [roads.bigRoad]);
   return (
-    <GridShell columns={layout.columns} label="Big road">
+    <GridShell
+      columns={layout.columns}
+      label="Big road"
+      revision={layout.placements.reduce((ties, placement) => ties + placement.cell.ties, 0)}
+    >
       {layout.placements.map((placement, index) => (
         <span
           key={index}

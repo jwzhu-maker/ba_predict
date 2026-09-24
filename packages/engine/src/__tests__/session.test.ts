@@ -152,3 +152,13 @@ describe("sessionStats", () => {
     expect(stats.bankrollCurve).toEqual([1000]);
   });
 });
+
+describe("recording a Banker win on 6", () => {
+  it("keeps the answer on the coup record for a Banker result only", () => {
+    const start = createSession();
+    const banker = applyCoup(start, { outcome: "banker", bankerWinOnSix: true }).session;
+    expect(banker.coups.at(-1)).toMatchObject({ outcome: "banker", bankerWinOnSix: true });
+    const player = applyCoup(start, { outcome: "player", bankerWinOnSix: true }).session;
+    expect(player.coups.at(-1)).not.toHaveProperty("bankerWinOnSix");
+  });
+});

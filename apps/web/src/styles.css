@@ -168,7 +168,73 @@ select {
   background: var(--surface);
 }
 
+.record-dock-next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 0;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.record-dock-next-side {
+  font-weight: 750;
+}
+
+.record-dock-next-player .record-dock-next-side {
+  color: var(--player);
+}
+
+.record-dock-next-banker .record-dock-next-side {
+  color: var(--banker);
+}
+
+.record-dock-next-tie .record-dock-next-side {
+  color: var(--tie);
+}
+
+.record-dock-next-units,
+.record-dock-next-none {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.record-dock-next-off {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.record-dock-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.record-dock-history {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.record-dock-history .chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .record-dock-line {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   margin: 0;
   font-size: 0.74rem;
   font-weight: 560;

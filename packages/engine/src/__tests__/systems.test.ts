@@ -4,6 +4,7 @@ import type { CoupRecord, Outcome } from "../types";
 import {
   BETTING_SYSTEMS,
   REVERSE_STREAK_FOUR_CONFIG,
+  REVERSE_STREAK_FOUR_MARTINGALE_CONFIG,
   REVERSE_TWELVE_CONFIG,
   bettingSystemById,
   runBettingSystem,
@@ -601,5 +602,248 @@ describe("system selection", () => {
         system.defaults,
       );
     }
+  });
+});
+
+/**
+ * A shoe whose bets from hand 13 on come out as `results` says: "W" the
+ * mirrored side wins, "L" it loses. Built hand by hand, because each hand's
+ * side depends on the hand twelve back.
+ */
+function shoeFromResults(results: string): string {
+  const hands: ("P" | "B")[] = WARMUP.split("") as ("P" | "B")[];
+  for (const result of results) {
+    const reference = hands[hands.length - 12]!;
+    const side = reference === "P" ? "B" : "P";
+    hands.push(result === "W" ? side : side === "P" ? "B" : "P");
+  }
+  return hands.join("");
+}
+
+describe("Reverse Streak 4 Martingale", () => {
+  const martingale = (results: string) =>
+    run(shoeFromResults(results), { system: "reverse-streak-4-martingale" });
+  const stakes = (results: string) =>
+    martingale(results)
+      .hands.filter((hand) => hand.bet !== null)
+      .map((hand) => hand.stake);
+
+  it("is listed with its defaults", () => {
+    expect(bettingSystemById("reverse-streak-4-martingale")).toMatchObject({
+      name: "Reverse Streak 4 Martingale",
+      defaults: REVERSE_STREAK_FOUR_MARTINGALE_CONFIG,
+    });
+    expect(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG).toMatchObject({
+      baseStake: 50,
+      maxLadderSteps: 4,
+      staking: "martingale",
+      recoveryWins: 2,
+      stopAtNetWins: 8,
+      lastHand: 60,
+    });
+  });
+
+  it("doubles after each loss and drops back to one unit on a win", () => {
+    expect(stakes("LLWLW")).toEqual([50, 100, 200, 50, 100]);
+    expect(martingale("LLW").next).toMatchObject({ stake: 50, ladderStep: 1, holdNet: null });
+  });
+
+  it("holds at 8 units after losing the fourth step, until two net wins", () => {
+    // 1, 2, 4, 8 all lose (-750); two Banker wins at 8 pay +760 → back to 1.
+    expect(stakes("LLLL" + "WW" + "L")).toEqual([50, 100, 200, 400, 400, 400, 50]);
+  });
+
+  it("keeps holding past two net wins until the climb's money is back", () => {
+    // W, L, W, W is +2 net, but Banker commission leaves the climb at -10
+    // (-750 + 380 - 400 + 380 + 380), so the stake stays at 8 for one more.
+    expect(stakes("LLLL" + "WLWW" + "W" + "L")).toEqual([
+      50, 100, 200, 400, 400, 400, 400, 400, 400, 50,
+    ]);
+    expect(martingale("LLLLWLWW").next).toMatchObject({ stake: 400, holdNet: 2 });
+    expect(martingale("LLLLWLWW").next.holdShortfall).toBeCloseTo(10, 6);
+  });
+
+  it("does not declare recovery at a high commission", () => {
+    // 25% commission: two Banker wins at 400 pay 600, short of the 750 lost.
+    const rules = { ...DEFAULT_RULES, bankerCommission: 0.25 };
+    const result = runBettingSystem({
+      coups: coups(shoeFromResults("LLLLWW")),
+      rules,
+      system: "reverse-streak-4-martingale",
+    });
+    expect(result.next).toMatchObject({ stake: 400, holdNet: 2 });
+    expect(result.next.holdShortfall).toBeCloseTo(150, 6);
+  });
+
+  it("reports the hold on the next hand", () => {
+    expect(martingale("LLLLW").next).toMatchObject({ stake: 400, ladderStep: 4, holdNet: 1 });
+    expect(martingale("LLLLL").next).toMatchObject({ stake: 400, holdNet: -1 });
+    expect(martingale("LLLLWW").next).toMatchObject({ stake: 50, ladderStep: 1, holdNet: null });
+  });
+
+  it("stops for the rest of the shoe once wins exceed losses by eight", () => {
+    const result = martingale("W".repeat(8) + "LWLW");
+    expect(result.netHands).toBe(8);
+    expect(result.targetReachedAt).toBe(20);
+    expect(result.bets).toBe(8);
+    expect(result.hands.slice(20).every((hand) => hand.skipped === "target-reached")).toBe(true);
+    expect(result.next).toMatchObject({ skipped: "target-reached", bet: null, stake: 0 });
+  });
+
+  it("counts net hands across losses on the way to the target", () => {
+    const result = martingale("WWLWWWLWWWWW" + "W");
+    // 11 wins, 2 losses: +8 on the twelfth bet, so the thirteenth is sat out.
+    expect(result.bets).toBe(12);
+    expect(result.targetReachedAt).toBe(24);
+  });
+
+  it("stops after hand 60 like the other systems", () => {
+    // 48 bets in range (hands 13-60), alternating, so the target is never hit.
+    const result = martingale("WL".repeat(30));
+    expect(result.bets).toBe(48);
+    expect(result.targetReachedAt).toBeNull();
+    expect(result.hands[60]!.skipped).toBe("past-last-hand");
+    expect(result.next.skipped).toBe("past-last-hand");
+  });
+
+  it("clips a held stake to the table maximum", () => {
+    const result = run(shoeFromResults("LLLL"), {
+      system: "reverse-streak-4-martingale",
+      tableMax: 300,
+    });
+    expect(result.next).toMatchObject({ stake: 300, requestedStake: 400, clipped: true });
+    expect(result.clippedBets).toBe(1);
+  });
+
+  it("leaves the existing systems' stakes unchanged", () => {
+    const pattern = shoeFromResults("WWWWWLWWL");
+    const streak = run(pattern, { system: "reverse-streak-4" });
+    expect(streak.hands.filter((h) => h.bet).map((h) => h.stake)).toEqual([
+      100, 200, 300, 400, 100, 200, 100, 200, 300,
+    ]);
+    expect(streak.targetReachedAt).toBeNull();
+    expect(BETTING_SYSTEMS.map((system) => system.id)).toEqual([
+      "reverse-12",
+      "reverse-streak-4",
+      "reverse-streak-4-martingale",
+    ]);
+  });
+});
+
+describe("Reverse Streak 4 Martingale after its target", () => {
+  it("opens no reporting groups once it has stopped", () => {
+    // Target on hand 20 (group 2, step 2); hands 21-40 are past it.
+    const result = run(shoeFromResults("W".repeat(8) + "WL".repeat(10)), {
+      system: "reverse-streak-4-martingale",
+    });
+    expect(result.targetReachedAt).toBe(20);
+    expect(result.groups.map((group) => group.group)).toEqual([1, 2]);
+    expect(result.groups.every((group) => group.bets > 0)).toBe(true);
+    expect(result.hands.slice(20).every((hand) => hand.group === null)).toBe(true);
+    // The group holding the target closes on it, not at hand 24.
+    expect(result.groups[1]).toMatchObject({ firstHand: 19, lastHand: 20 });
+  });
+});
+
+describe("Reverse Streak 4 Martingale under a table maximum", () => {
+  // Player wins pay even money, so drive the hands to Player: after an
+  // all-Player warm-up the first twelve bets back Banker, so losses there
+  // are Player hands and wins are Banker hands. Use a table max of 300,
+  // cutting the 400 top stake.
+  const clipped = (results: string) =>
+    run(shoeFromResults(results), { system: "reverse-streak-4-martingale", tableMax: 300 });
+  const stakes = (results: string) =>
+    clipped(results)
+      .hands.filter((hand) => hand.bet !== null)
+      .map((hand) => hand.stake);
+
+  it("holds past two net wins until the cut climb is back in profit", () => {
+    // Climb: -50 -100 -200 -300 = -650. Two wins at 300 (Banker, 0.95x)
+    // make +570: still short, so the third bet stays at the top; the third
+    // win takes it to +855 - 650 > 0, and the next bet is one unit again.
+    expect(stakes("LLLL" + "WWW" + "L")).toEqual([50, 100, 200, 300, 300, 300, 300, 50]);
+    const holding = clipped("LLLLWW").next;
+    expect(holding).toMatchObject({ stake: 300, holdNet: 2 });
+    expect(holding.holdShortfall).toBeCloseTo(80, 6);
+    expect(clipped("LLLLWWW").next).toMatchObject({ stake: 50, holdNet: null, holdShortfall: null });
+  });
+
+  it("resets on two wins when nothing was cut and they cover the climb", () => {
+    const result = run(shoeFromResults("LLLLWW"), { system: "reverse-streak-4-martingale" });
+    expect(result.next).toMatchObject({ stake: 50, holdShortfall: null });
+  });
+});
+
+describe("Reverse Streak 4 Martingale, fifth review", () => {
+  const martingale = (results: string, extra = {}) =>
+    run(shoeFromResults(results), { system: "reverse-streak-4-martingale", ...extra });
+
+  it("treats a stake under the table minimum as unplaced", () => {
+    // A 100 minimum blocks the 50 opener: a loss there must not climb to 100.
+    const result = martingale("LLLW", { tableMin: 100 });
+    expect(result.bets).toBe(0);
+    expect(result.hands.slice(12).every((hand) => hand.skipped === "below-minimum")).toBe(true);
+    expect(result.next).toMatchObject({ stake: 50, bet: "banker" });
+    expect(result.targetReachedAt).toBeNull();
+    expect(result.belowMinimumHands).toBe(4);
+  });
+
+  it("holds a top-stake win that does not recover the climb", () => {
+    // 25% commission: -50 -100 -200 then +300 on the 400 win is -50.
+    const rules = { ...DEFAULT_RULES, bankerCommission: 0.25 };
+    const result = runBettingSystem({
+      coups: coups(shoeFromResults("LLLW")),
+      rules,
+      system: "reverse-streak-4-martingale",
+    });
+    // One win at the top so far, so the hold reads +1, not the +2 target.
+    expect(result.next).toMatchObject({ stake: 400, ladderStep: 4, holdNet: 1 });
+    expect(result.next.holdShortfall).toBeCloseTo(50, 6);
+  });
+
+  it("still resets on a top-stake win that does recover", () => {
+    // Default 5%: -350 then +380 is ahead.
+    expect(martingale("LLLW").next).toMatchObject({ stake: 50, holdNet: null });
+  });
+
+  it("settles a no-commission Banker win on 6 from the recorded answer", () => {
+    // Four Banker losses, then two Banker wins at 400 on a no-commission
+    // table, one of them on 6 (pays half): -750 + 400 + 200 = -150.
+    const noCommission = { ...DEFAULT_RULES, bankerCommission: 0, bankerSixPayout: 0.5 };
+    const base = coups(shoeFromResults("LLLLWW"));
+    const withSix = base.map((coup, index) =>
+      index === base.length - 1 ? { ...coup, bankerWinOnSix: true } : { ...coup, bankerWinOnSix: false },
+    );
+    const exact = runBettingSystem({
+      coups: withSix.map((coup) => (coup.outcome === "banker" ? coup : { ...coup, bankerWinOnSix: undefined })),
+      rules: noCommission,
+      system: "reverse-streak-4-martingale",
+    });
+    expect(exact.approximate).toBe(false);
+    expect(exact.next).toMatchObject({ stake: 400 });
+    expect(exact.next.holdShortfall).toBeCloseTo(150, 6);
+  });
+});
+
+describe("a top-stake win that holds, then a second win", () => {
+  it("resets once two wins at the top have recovered the climb", () => {
+    // 25% commission: -350, +300 (holdNet 1, -50), +300 (holdNet 2, +250) → reset.
+    const rules = { ...DEFAULT_RULES, bankerCommission: 0.25 };
+    const result = runBettingSystem({
+      coups: coups(shoeFromResults("LLLWW")),
+      rules,
+      system: "reverse-streak-4-martingale",
+    });
+    expect(result.next).toMatchObject({ stake: 50, holdNet: null });
+  });
+});
+
+describe("a run stopped by its target", () => {
+  it("is not reported as a shoe that ended early", () => {
+    const result = run(shoeFromResults("W".repeat(8) + "WL"), {
+      system: "reverse-streak-4-martingale",
+    });
+    expect(result.targetReachedAt).toBe(20);
+    expect(result.incomplete).toBe(false);
   });
 });

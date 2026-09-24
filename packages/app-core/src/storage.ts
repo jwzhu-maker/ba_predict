@@ -34,7 +34,7 @@ function parseAcknowledgedStop(value: unknown): ReachedStop | null {
 
 /** The slice of state worth keeping across launches. */
 export function serializeState(state: AppState): string {
-  const { history: _history, ...rest } = state;
+  const { history: _history, future: _future, ...rest } = state;
   return JSON.stringify(rest);
 }
 
@@ -78,6 +78,8 @@ export function deserializeState(raw: string | null | undefined): AppState {
       tableMode: parsed.tableMode === "observe" ? "observe" : "play",
       // How much the app should explain is a preference, so it survives too.
       adviceReasonsOpen: parsed.adviceReasonsOpen === true,
+      // A preference, so it survives; anything but an explicit false is on.
+      tapSound: parsed.tapSound !== false,
       // An answered-for limit survives a relaunch: reopening the app is not
       // a reason to be asked about the same stop-loss again. It is checked
       // against the restored session on the first action either way, so a
@@ -86,6 +88,7 @@ export function deserializeState(raw: string | null | undefined): AppState {
       // Undo history is deliberately not restored: it is a stack of whole
       // sessions, and "undo across a relaunch" is not a promise worth making.
       history: [],
+      future: [],
       cardEntry: [],
       pendingWager: null,
       lastSettlement: null,

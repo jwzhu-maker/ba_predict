@@ -25,6 +25,18 @@ describe("coupProbabilities", () => {
     expect(p.fourCards + p.fiveCards + p.sixCards).toBeCloseTo(1, 12);
   });
 
+  it("prices the larger 10- and 12-deck shoes Settings offers", () => {
+    // More decks tend toward the infinite-deck figures, so each sits within a
+    // hair of the 8-deck numbers and still sums to one.
+    for (const decks of [10, 12]) {
+      const p = coupProbabilities(createShoe(decks))!;
+      expect(p.banker + p.player + p.tie).toBeCloseTo(1, 12);
+      expect(p.banker).toBeCloseTo(BANKER, 3);
+      expect(p.player).toBeCloseTo(PLAYER, 3);
+      expect(p.tie).toBeCloseTo(TIE, 3);
+    }
+  });
+
   it("matches the known six-deck and one-deck figures", () => {
     const six = coupProbabilities(createShoe(6))!;
     expect(six.banker).toBeCloseTo(0.458653, 5);

@@ -316,3 +316,60 @@ describe("the call under a second system", () => {
     expect(callToWager(call)).toBeNull();
   });
 });
+
+describe("the call under the Martingale system", () => {
+  const martingale = (pattern: string) =>
+    runBettingSystem({
+      coups: coups(pattern),
+      rules: DEFAULT_RULES,
+      system: "reverse-streak-4-martingale" as const,
+    });
+
+  it("stakes eight units after three losses", () => {
+    const call = resolveTableCall({ ...base, run: martingale(`${WARMUP}PPP`), bankroll: 5000 });
+    expect(call).toMatchObject({ source: "system", bet: "banker", amount: 400, stakes: true });
+  });
+
+  it("stops staking once it is eight hands up", () => {
+    // Every reference hand is Player, so eight Bankers are eight wins.
+    const call = resolveTableCall({ ...base, run: martingale(`${WARMUP}BBBBBBBB`) });
+    expect(call).toMatchObject({ source: "system", bet: null, stakes: false });
+    expect(call.noBetReason).toContain("stop-win");
+    expect(callToWager(call)).toBeNull();
+  });
+});
+
+describe("a skipped coup", () => {
+  it("keeps what it declined, for the dock to show as not staked", () => {
+    const call = resolveTableCall({ ...base, skipped: true });
+    expect(call).toMatchObject({ source: "skipped", bet: null, stakes: false });
+    expect(call.skippedSuggestion).toEqual({ bet: "banker", amount: 10, source: "advice" });
+    expect(callToWager(call)).toBeNull();
+  });
+
+  it("remembers a declined system bet as the system's", () => {
+    const call = resolveTableCall({ ...base, run: run(WARMUP), skipped: true });
+    expect(call.skippedSuggestion).toEqual({ bet: "banker", amount: 100, source: "system" });
+  });
+
+  it("has nothing to keep when the underlying call bets nothing", () => {
+    const call = resolveTableCall({ ...base, run: run("PP"), skipped: true });
+    expect(call.skippedSuggestion).toBeNull();
+  });
+});
+
+describe("the table minimum", () => {
+  it("refuses a system stake below it rather than staking it", () => {
+    const martingale = runBettingSystem({
+      coups: coups(WARMUP),
+      rules: DEFAULT_RULES,
+      system: "reverse-streak-4-martingale" as const,
+    });
+    const call = resolveTableCall({ ...base, run: martingale, tableMin: 100 });
+    expect(call).toMatchObject({ bet: "banker", amount: 50, stakes: false });
+    expect(call.blockedReason).toContain("table minimum");
+    expect(callToWager(call)).toBeNull();
+    // At or above the minimum it stakes as usual.
+    expect(resolveTableCall({ ...base, run: martingale, tableMin: 50 }).stakes).toBe(true);
+  });
+});

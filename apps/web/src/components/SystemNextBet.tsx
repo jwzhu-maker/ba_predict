@@ -56,6 +56,14 @@ export default function SystemNextBet() {
         </p>
       );
     }
+    if (next.skipped === "target-reached") {
+      return (
+        <p className="prose">
+          Done for this shoe — wins are {run.config.stopAtNetWins} ahead of losses, which is
+          where {run.name} stops. It starts again on the next shoe.
+        </p>
+      );
+    }
     // Only a system whose groups gate play can reach this; Reverse Streak
     // 4 never sits a hand out once it has started.
     if (next.skipped === "group-over") {
@@ -87,7 +95,7 @@ export default function SystemNextBet() {
         {/* Shared with the Bet card's own detail line, and shaped by the
             system: a group step is the ladder rung on Reverse 12 and is not
             on Reverse Streak 4, where a loss resets one and not the other. */}
-        <p className="field-hint">{nextHandDetail(run)}</p>
+        <p className="field-hint">{nextHandDetail(run, money)}</p>
       </>
     );
   };

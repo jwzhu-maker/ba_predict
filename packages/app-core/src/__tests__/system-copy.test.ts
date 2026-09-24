@@ -1,6 +1,7 @@
 import {
   DEFAULT_RULES,
   REVERSE_STREAK_FOUR_CONFIG,
+  REVERSE_STREAK_FOUR_MARTINGALE_CONFIG,
   REVERSE_TWELVE_CONFIG,
   runBettingSystem,
   type CoupRecord,
@@ -10,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   bettableHands,
   describeBetRate,
+  describeRunShape,
   describeSystemRules,
   expectedBetsPerGroup,
   handsInRange,
@@ -337,5 +339,77 @@ describe("system copy", () => {
     expect(run(`${WARMUP}TBTB`).next.hand).toBe(15);
     expect(run("").handsAvailable + 1).toBe(1);
     expect(tieReconciliation(run(""))).toBe("Hand 1 is coup 1 of the shoe — no ties yet.");
+  });
+});
+
+describe("Reverse Streak 4 Martingale copy", () => {
+  const martingale = (pattern: string) =>
+    runBettingSystem({
+      coups: coups(pattern),
+      rules: DEFAULT_RULES,
+      system: "reverse-streak-4-martingale" as const,
+    });
+  // Twelve Player hands, then Player again: every bet backs Banker and loses.
+  const lostFour = "P".repeat(12) + "PPPP";
+
+  it("describes doubling, the hold and the stop-win", () => {
+    const rules = describeSystemRules(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG, money);
+    expect(rules).toContain("1, 2, 4 and 8 units");
+    expect(rules).toContain("double after each loss");
+    expect(rules).toContain("back to one unit after a win below the top");
+    expect(rules).toContain("a win while holding does not reset it");
+    expect(rules).toContain("until it is 2 net wins up at that stake");
+    expect(rules).not.toContain("after any win");
+    expect(rules).toContain("wins outnumber losses by 8");
+    expect(rules).toContain("stops after hand 60");
+  });
+
+  it("says the target can end the shoe early", () => {
+    expect(describeBetRate(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG)).toBe(
+      "On a full shoe it stakes every one of the 48 hands from 13 to 60, unless it gets 8 wins ahead first and stops there.",
+    );
+  });
+
+  it("counts possible bets only up to the stop-win", () => {
+    // Every reference hand is Player, so eight Bankers are eight wins: the
+    // target lands on hand 20, and the rest of the shoe is not bettable.
+    const result = martingale("P".repeat(12) + "B".repeat(8) + "PB".repeat(20));
+    expect(result.targetReachedAt).toBe(20);
+    expect(bettableHands(result)).toBe(8);
+  });
+
+  it("tops out at eight units", () => {
+    expect(topStake(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG)).toBe(400);
+  });
+
+  it("names the doubling step, then the hold", () => {
+    expect(nextHandDetail(martingale("P".repeat(12) + "PP"))).toContain("doubling step 3 of 4");
+    expect(nextHandDetail(martingale(lostFour), money)).toContain(
+      "holding the top stake, +0 of +2 net, $750 still to win back",
+    );
+  });
+
+  it("says why it is still holding when a cut climb is not back yet", () => {
+    // Four Banker losses, then two Banker wins at a 300 table maximum.
+    const run = runBettingSystem({
+      coups: coups("P".repeat(12) + "PPPP" + "BB"),
+      rules: DEFAULT_RULES,
+      system: "reverse-streak-4-martingale" as const,
+      tableMax: 300,
+    });
+    // 50 + 100 + 200 + 300 lost, two Banker wins at 300 paid 570: 80 short.
+    expect(nextHandDetail(run, money)).toContain(
+      "holding the top stake, +2 of +2 net, $80 still to win back",
+    );
+    expect(describeSystemRules(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG, money)).toContain(
+      "once the climb's losses are actually won back",
+    );
+  });
+
+  it("describes its shape as a Martingale, not a ladder", () => {
+    const shape = describeRunShape(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG);
+    expect(shape).toContain("a loss doubles the next one");
+    expect(shape).not.toContain("ladder resets");
+    expect(shape).toContain("until it gets 8 wins ahead, when it stops for the shoe");
   });
 });
