@@ -352,6 +352,8 @@ export interface SystemRun {
   netHands: number;
   /** The hand on which `stopAtNetWins` was reached, or null if it was not. */
   targetReachedAt: number | null;
+  /** Hands the rule called but could not place, being under the table minimum. */
+  belowMinimumHands: number;
 }
 
 /**
@@ -435,9 +437,10 @@ function advanceStake(
     if (atTop && state.climbProfit < -1e-9) {
       // A win on the top stake that still leaves the climb behind (a high
       // Banker commission, or a cut stake) has not recovered it: hold the
-      // top stake, with the win counted, until the money is back too.
+      // top stake until the money is back too. That one win is the only
+      // win at the top so far, so the hold starts at +1, not at the target.
       state.holding = true;
-      state.holdNet = config.recoveryWins ?? 2;
+      state.holdNet = 1;
       return;
     }
     // Otherwise a win ends the climb.
@@ -783,6 +786,7 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
     approximate,
     netHands: wins - losses,
     targetReachedAt,
+    belowMinimumHands: hands.filter((row) => row.skipped === "below-minimum").length,
   };
 }
 

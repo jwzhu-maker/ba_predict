@@ -43,6 +43,18 @@ export default function SystemRun() {
     );
   }
 
+  if (run.bets === 0 && run.belowMinimumHands > 0) {
+    return (
+      <Card title={run.name} subtitle={`${run.handsAvailable} hands, nothing placed${preview}`}>
+        <Prose>
+          Every call so far — {run.belowMinimumHands} of them — was under your table minimum, so
+          none was placed and the rule has not moved. {run.name} opens at{" "}
+          {money.format(run.config.baseStake)}; lower the minimum in Settings to play it here.
+        </Prose>
+      </Card>
+    );
+  }
+
   if (run.bets === 0) {
     const left = run.config.lookback + 1 - run.handsAvailable;
     return (
