@@ -77,6 +77,12 @@ export interface RedoStep {
    * consumed nothing, and redo then leaves the pending inputs alone.
    */
   inputs: { cardEntry: Rank[]; pendingWager: PlacedWager | null } | null;
+  /**
+   * The settlement on screen before the undo. Redo restores it when the
+   * redone action settled nothing itself — a typed run keeps the warning
+   * from the coup before it, and must keep it again after a redo.
+   */
+  lastSettlement: Settlement | null;
 }
 
 export interface AppState {
@@ -649,6 +655,7 @@ function reduceAction(state: AppState, action: Action): AppState {
             inputs: previous.consumed
               ? { cardEntry: state.cardEntry, pendingWager: state.pendingWager }
               : null,
+            lastSettlement: state.lastSettlement,
           },
         ],
         // What the undone action consumed, or what stands now if it
@@ -674,7 +681,7 @@ function reduceAction(state: AppState, action: Action): AppState {
         pendingWager: next.inputs ? next.inputs.pendingWager : state.pendingWager,
         // What the redone coup settled, so a warning it raised (a wager the
         // engine could not settle exactly) comes back with it.
-        lastSettlement: next.undone.settlement ?? null,
+        lastSettlement: next.undone.settlement ?? next.lastSettlement,
       };
     }
 

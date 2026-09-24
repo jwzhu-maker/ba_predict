@@ -772,3 +772,17 @@ describe("redo boundaries", () => {
     expect(redone.lastSettlement).toEqual(recorded.lastSettlement);
   });
 });
+
+describe("redo and the settlement warning", () => {
+  it("keeps the previous coup's warning when redoing a typed run", () => {
+    const warned = play(
+      createInitialState(),
+      { type: "place-wager", wager: { bet: "big", amount: 50 } },
+      { type: "record-coup", coup: { outcome: "banker" } },
+      { type: "record-coups", outcomes: ["player", "banker"] },
+    );
+    expect(warned.lastSettlement?.unsettled).toBeTruthy();
+    const redone = play(warned, { type: "undo" }, { type: "redo" });
+    expect(redone.lastSettlement).toEqual(warned.lastSettlement);
+  });
+});

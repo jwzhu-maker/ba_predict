@@ -837,3 +837,13 @@ describe("a top-stake win that holds, then a second win", () => {
     expect(result.next).toMatchObject({ stake: 50, holdNet: null });
   });
 });
+
+describe("a run stopped by its target", () => {
+  it("is not reported as a shoe that ended early", () => {
+    const result = run(shoeFromResults("W".repeat(8) + "WL"), {
+      system: "reverse-streak-4-martingale",
+    });
+    expect(result.targetReachedAt).toBe(20);
+    expect(result.incomplete).toBe(false);
+  });
+});

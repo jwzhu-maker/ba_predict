@@ -16,19 +16,23 @@ import { Platform, Vibration } from "react-native";
 
 const BUZZ_MS = 250;
 
-let player: AudioPlayer | null = null;
-let failed = false;
+let player: Promise<AudioPlayer | null> | null = null;
 
-function tickPlayer(): AudioPlayer | null {
-  if (player || failed) return player;
-  try {
-    void setAudioModeAsync({ playsInSilentMode: false, interruptionMode: "mixWithOthers" }).catch(
-      () => undefined,
-    );
-    player = createAudioPlayer(require("../../assets/tick.wav"));
-  } catch {
-    failed = true;
-  }
+/**
+ * The tick player, created only once the audio mode is in place, so even
+ * the first tick after launch obeys the silent switch and mixes with other
+ * audio rather than playing under the default session.
+ */
+function tickPlayer(): Promise<AudioPlayer | null> {
+  player ??= setAudioModeAsync({ playsInSilentMode: false, interruptionMode: "mixWithOthers" })
+    .catch(() => undefined)
+    .then(() => {
+      try {
+        return createAudioPlayer(require("../../assets/tick.wav"));
+      } catch {
+        return null;
+      }
+    });
   return player;
 }
 
@@ -39,17 +43,14 @@ export function tapFeedback(sound: boolean): void {
     // Feedback must never be the reason a result fails to record.
   }
   if (!sound) return;
-  const tick = tickPlayer();
-  if (!tick) return;
-  try {
-    // Rewind first so a second tap replays rather than being ignored, and
-    // play only once the rewind has landed — playing straight away can
-    // start from the end of the last tick and make no sound.
-    void tick
-      .seekTo(0)
-      .catch(() => undefined)
-      .then(() => tick.play());
-  } catch {
-    // As above.
-  }
+  // Rewind first so a second tap replays rather than being ignored, and
+  // play only once the rewind has landed — playing straight away can start
+  // from the end of the last tick and make no sound.
+  void tickPlayer()
+    .then(async (tick) => {
+      if (!tick) return;
+      await tick.seekTo(0).catch(() => undefined);
+      tick.play();
+    })
+    .catch(() => undefined);
 }

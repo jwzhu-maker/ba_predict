@@ -782,7 +782,9 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
     clippedBets,
     perUnit: staked === 0 ? 0 : balance / staked,
     perfectGroups: groups.filter((group) => group.perfect).length,
-    incomplete: target !== null && sequence.length < target,
+    // A run the net-wins target stopped finished by its own rule, not
+    // because the shoe ran short of hand 60.
+    incomplete: target !== null && sequence.length < target && targetReachedAt === null,
     approximate,
     netHands: wins - losses,
     targetReachedAt,
