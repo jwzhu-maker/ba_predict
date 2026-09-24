@@ -66,13 +66,6 @@ export default function SystemRecord() {
           value={formatPercent(record.successRate, 0)}
           hint={`${record.shoesAhead} of ${record.shoesWithBets}`}
         />
-        {target != null ? (
-          <Stat
-            label={`Reached +${target}`}
-            value={formatPercent(record.shoesTargetReached / record.shoesWithBets, 0)}
-            hint={`${record.shoesTargetReached} of ${record.shoesWithBets} shoes`}
-          />
-        ) : null}
         <Stat label="Bets won" value={formatPercent(record.hitRate, 1)} />
         <Stat
           label="Per unit"
@@ -80,6 +73,13 @@ export default function SystemRecord() {
           tone={record.perUnit >= 0 ? "good" : "bad"}
           hint="Net over everything staked"
         />
+        {target != null ? (
+          <Stat
+            label={`Reached +${target}`}
+            value={formatPercent(record.shoesTargetReached / record.shoesWithBets, 0)}
+            hint={`${record.shoesTargetReached} of ${record.shoesWithBets} shoes`}
+          />
+        ) : null}
         <Stat label="Staked" value={money.format(record.staked)} />
         <Stat
           label="Best shoe"
