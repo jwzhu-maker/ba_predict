@@ -35,6 +35,8 @@ export interface SystemShoeResult {
   perfectGroups: number;
   peakStake: number;
   incomplete: boolean;
+  /** The hand the stop-win landed on, or null if it was not reached (or there is none). */
+  targetReachedAt: number | null;
 }
 
 export interface SystemRecord {
@@ -65,6 +67,11 @@ export interface SystemRecord {
   groups: number;
   /** Shoes that ran out before the system's last hand. */
   incompleteShoes: number;
+  /**
+   * Shoes that reached the system's stop-win (`stopAtNetWins`), out of
+   * `shoesWithBets`. Always 0 for a system without one.
+   */
+  shoesTargetReached: number;
   /** Per-shoe results, oldest first, for a sparkline or a scan down the list. */
   perShoe: SystemShoeResult[];
   approximate: boolean;
@@ -112,6 +119,7 @@ export function aggregateSystemRecord(options: SystemRecordOptions): SystemRecor
   let perfectGroups = 0;
   let groups = 0;
   let incompleteShoes = 0;
+  let shoesTargetReached = 0;
   let approximate = false;
   let counted = 0;
 
@@ -133,6 +141,7 @@ export function aggregateSystemRecord(options: SystemRecordOptions): SystemRecor
       perfectGroups: run.perfectGroups,
       peakStake: run.peakStake,
       incomplete: run.incomplete,
+      targetReachedAt: run.targetReachedAt,
     });
 
     bets += run.bets;
@@ -142,6 +151,7 @@ export function aggregateSystemRecord(options: SystemRecordOptions): SystemRecor
     perfectGroups += run.perfectGroups;
     groups += run.groups.length;
     if (run.incomplete) incompleteShoes += 1;
+    if (run.targetReachedAt !== null) shoesTargetReached += 1;
     if (run.peakStake > peakStake) peakStake = run.peakStake;
 
     // A shoe too short to reach hand 13 is not a shoe this system played, so
@@ -179,6 +189,7 @@ export function aggregateSystemRecord(options: SystemRecordOptions): SystemRecor
     perfectGroups,
     groups,
     incompleteShoes,
+    shoesTargetReached,
     perShoe,
     approximate,
   };

@@ -47,6 +47,7 @@ export default function SystemRecord() {
   }
 
   const ahead = record.net >= 0;
+  const target = record.config.stopAtNetWins;
 
   return (
     <Card
@@ -72,6 +73,13 @@ export default function SystemRecord() {
           value={`${record.perUnit >= 0 ? "+" : "−"}${formatPercent(Math.abs(record.perUnit), 2)}`}
           tone={record.perUnit >= 0 ? "good" : "bad"}
         />
+        {target != null ? (
+          <Stat
+            label={`Reached +${target}`}
+            value={formatPercent(record.shoesTargetReached / record.shoesWithBets, 0)}
+            hint={`${record.shoesTargetReached} of ${record.shoesWithBets} shoes`}
+          />
+        ) : null}
         <Stat label="Staked" value={money.format(record.staked)} />
         <Stat
           label="Best shoe"
