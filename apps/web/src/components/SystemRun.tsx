@@ -1,6 +1,7 @@
 import {
   bettableHands,
   describeRunShape,
+  describeStopWinResult,
   describeSystemRules,
 } from "@ba-predict/app-core";
 import { Card, Notice, Stat } from "./Primitives";
@@ -66,6 +67,9 @@ export default function SystemRun() {
   }
 
   const ahead = run.net >= 0;
+  // The Martingale's own result — did it get its eight wins ahead — beside
+  // the money, rather than only as a note on whichever group it landed in.
+  const stopWin = describeStopWinResult(run, finished);
 
   return (
     <Card
@@ -77,6 +81,11 @@ export default function SystemRun() {
         <span className={`system-net ${ahead ? "good" : "bad"}`}>
           {money.format(Math.abs(run.net))}
         </span>
+        {stopWin ? (
+          <p className={`system-outcome${run.targetReachedAt !== null ? " good" : ""}`}>
+            {stopWin}
+          </p>
+        ) : null}
       </div>
 
       <div className="stat-grid">

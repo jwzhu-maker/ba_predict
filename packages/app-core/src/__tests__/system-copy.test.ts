@@ -12,6 +12,7 @@ import {
   bettableHands,
   describeBetRate,
   describeRunShape,
+  describeStopWinResult,
   describeSystemRules,
   expectedBetsPerGroup,
   handsInRange,
@@ -404,6 +405,34 @@ describe("Reverse Streak 4 Martingale copy", () => {
     expect(describeSystemRules(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG, money)).toContain(
       "once the climb's losses are actually won back",
     );
+  });
+
+  it("reports the stop-win result beside the net", () => {
+    // Eight Banker wins against twelve Player reference hands: +8 on hand 20.
+    expect(describeStopWinResult(martingale("P".repeat(12) + "B".repeat(8) + "PB".repeat(20)))).toBe(
+      "Stop-win reached on hand 20: 8 wins ahead, and no bets after it.",
+    );
+    // Three wins, one loss: two ahead, shoe still going.
+    expect(describeStopWinResult(martingale("P".repeat(12) + "BBBP"))).toBe(
+      "2 wins ahead so far — it stops for the shoe at 8 wins ahead.",
+    );
+    expect(describeStopWinResult(martingale(lostFour))).toBe(
+      "4 losses behind so far — it stops for the shoe at 8 wins ahead.",
+    );
+    // The same run once the shoe is over is a result, not a progress report.
+    expect(describeStopWinResult(martingale("P".repeat(12) + "BP"), true)).toBe(
+      "Finished level, short of the 8-win stop.",
+    );
+  });
+
+  it("has no stop-win result before a bet, or for a system without one", () => {
+    expect(describeStopWinResult(martingale("P".repeat(12)))).toBeNull();
+    const ladder = runBettingSystem({
+      coups: coups("P".repeat(12) + "BBBB"),
+      rules: DEFAULT_RULES,
+      system: "reverse-streak-4" as const,
+    });
+    expect(describeStopWinResult(ladder, true)).toBeNull();
   });
 
   it("describes its shape as a Martingale, not a ladder", () => {

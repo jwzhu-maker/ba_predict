@@ -2,6 +2,7 @@ import { Text, View } from "react-native";
 import {
   bettableHands,
   describeRunShape,
+  describeStopWinResult,
   describeSystemRules,
 } from "@ba-predict/app-core";
 import { formatPercent } from "../lib/format";
@@ -68,6 +69,9 @@ export default function SystemRun() {
   }
 
   const ahead = run.net >= 0;
+  // The Martingale's own result — did it get its eight wins ahead — beside
+  // the money, rather than only as a note on whichever group it landed in.
+  const stopWin = describeStopWinResult(run, finished);
 
   return (
     <Card
@@ -80,6 +84,17 @@ export default function SystemRun() {
           {money.format(Math.abs(run.net))}
         </Text>
       </View>
+      {stopWin ? (
+        <Text
+          style={{
+            fontSize: 14,
+            fontWeight: "600",
+            color: run.targetReachedAt !== null ? p.accent : p.text,
+          }}
+        >
+          {stopWin}
+        </Text>
+      ) : null}
 
       <Row>
         <Stat

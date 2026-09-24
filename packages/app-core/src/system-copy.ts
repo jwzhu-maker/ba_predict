@@ -308,3 +308,39 @@ export function nextHandDetail(
   // card reserves to keep the Record buttons still.
   return `Hand ${next.hand} · ${rung} · mirroring hand ${next.referenceHand}`;
 }
+
+/** "3 wins ahead", "level", "2 losses behind": a run's wins minus losses. */
+function describeNetHands(netHands: number): string {
+  if (netHands === 0) return "level";
+  const count = Math.abs(netHands);
+  return netHands > 0
+    ? `${count} win${count === 1 ? "" : "s"} ahead`
+    : `${count} loss${count === 1 ? "" : "es"} behind`;
+}
+
+/**
+ * How a run with a stop-win did against it, for the line under its net.
+ *
+ * The money says how the shoe went; this says how the RULE went, which on
+ * the Martingale is the result the player is actually playing for — it
+ * stakes every hand to get eight wins ahead and then stops. Before this the
+ * only place that outcome appeared was a note on one group row.
+ *
+ * Null for a system without a target, and before the first bet. `shoeOver`
+ * is the caller's to say (the run card knows when it is showing the last
+ * shoe); a run past its last hand is over whatever the caller says.
+ */
+export function describeStopWinResult(run: SystemRun, shoeOver = false): string | null {
+  const target = run.config.stopAtNetWins;
+  if (target == null || run.bets === 0) return null;
+  if (run.targetReachedAt !== null) {
+    return `Stop-win reached on hand ${run.targetReachedAt}: ${target} wins ahead, and no bets after it.`;
+  }
+  const lead = describeNetHands(run.netHands);
+  const pastLastHand = run.config.lastHand !== null && run.handsAvailable >= run.config.lastHand;
+  if (shoeOver || pastLastHand) {
+    return `Finished ${lead}, short of the ${target}-win stop.`;
+  }
+  const opening = lead.charAt(0).toUpperCase() + lead.slice(1);
+  return `${opening} so far — it stops for the shoe at ${target} wins ahead.`;
+}

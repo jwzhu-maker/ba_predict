@@ -47,6 +47,7 @@ export default function SystemRecord() {
   }
 
   const ahead = record.net >= 0;
+  const target = record.config.stopAtNetWins;
 
   return (
     <Card
@@ -66,6 +67,13 @@ export default function SystemRecord() {
           value={formatPercent(record.successRate, 0)}
           hint={`${record.shoesAhead} of ${record.shoesWithBets}`}
         />
+        {target != null ? (
+          <Stat
+            label={`Reached +${target}`}
+            value={formatPercent(record.shoesTargetReached / record.shoesWithBets, 0)}
+            hint={`${record.shoesTargetReached} of ${record.shoesWithBets} shoes`}
+          />
+        ) : null}
         <Stat label="Bets won" value={formatPercent(record.hitRate, 1)} />
         <Stat
           label="Per unit"
