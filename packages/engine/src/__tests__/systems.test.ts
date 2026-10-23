@@ -726,6 +726,8 @@ describe("Reverse Streak 4 Martingale", () => {
       "reverse-12",
       "reverse-streak-4",
       "reverse-streak-4-martingale",
+      "nine-opposite-147",
+      "nine-opposite-pairs",
     ]);
   });
 });
@@ -845,5 +847,103 @@ describe("a run stopped by its target", () => {
     });
     expect(result.targetReachedAt).toBe(20);
     expect(result.incomplete).toBe(false);
+  });
+});
+
+/** A shoe where every hand from 10 on is the opposite of the hand nine back. */
+function nineOppositeWins(length: number): string {
+  const out = "PPPPPPPPP".split("");
+  for (let index = 9; index < length; index += 1) out.push(out[index - 9] === "P" ? "B" : "P");
+  return out.join("");
+}
+
+describe("9 Opposite (1-4-7)", () => {
+  const nine = (pattern: string, overrides = {}) =>
+    run(pattern, { system: "nine-opposite-147", ...overrides });
+  const NINE = "PPPPPPPPP";
+
+  it("watches the first nine hands and bets only hands 1, 4 and 7 of each group", () => {
+    const result = nine(NINE + "PPPBBBBBB");
+    expect(result.hands.filter((row) => row.bet !== null).map((row) => row.hand)).toEqual([10, 13, 16]);
+    expect(result.hands[10]!.skipped).toBe("off-step");
+    expect(result.groups).toHaveLength(1);
+    expect(result.config.firstGroupNumber).toBe(2);
+  });
+
+  it("doubles after a loss and drops to one unit after a win", () => {
+    // Every reference hand is Player, so every bet backs Banker.
+    const result = nine(NINE + "PPPBBBBBB");
+    const stakes = result.hands.filter((row) => row.bet !== null).map((row) => row.stake);
+    expect(stakes).toEqual([50, 100, 50]);
+    expect(result.net).toBeCloseTo(-50 + 95 + 47.5, 10);
+  });
+
+  it("stays at eight units while it keeps losing, across groups", () => {
+    const result = nine(NINE + "P".repeat(27));
+    const stakes = result.hands.filter((row) => row.bet !== null).map((row) => row.stake);
+    expect(stakes).toEqual([50, 100, 200, 400, 400, 400, 400, 400, 400]);
+  });
+
+  it("tallies every hand of a group, bet or not", () => {
+    const [group] = nine(NINE + "PPPBBBBBB").groups;
+    expect(group).toMatchObject({ callsRight: 6, callsWrong: 3, bets: 3, wins: 2 });
+  });
+
+  it("stops for the shoe once it is six units up", () => {
+    const result = nine(nineOppositeWins(45));
+    expect(result.targetReachedAt).not.toBeNull();
+    const reached = result.hands.find((row) => row.hand === result.targetReachedAt)!;
+    expect(reached.balance).toBeGreaterThanOrEqual(300);
+    expect(result.hands.filter((row) => row.hand > result.targetReachedAt! && row.bet !== null)).toHaveLength(0);
+    expect(result.next.skipped).toBe("target-reached");
+  });
+
+  it("stops after hand 63", () => {
+    const result = nine(NINE + "P".repeat(60));
+    expect(result.hands.filter((row) => row.bet !== null).every((row) => row.hand <= 63)).toBe(true);
+    expect(result.bets).toBe(18);
+    expect(result.groups).toHaveLength(6);
+  });
+
+  it("reads the next hand: an off-step, then a doubled stake", () => {
+    expect(nine(NINE + "P").next).toMatchObject({ hand: 11, skipped: "off-step", bet: null });
+    expect(nine(NINE + "PPP").next).toMatchObject({ hand: 13, bet: "banker", stake: 100 });
+  });
+});
+
+describe("9 Opposite (pairs)", () => {
+  const pairs = (pattern: string, overrides = {}) =>
+    run(pattern, { system: "nine-opposite-pairs", ...overrides });
+  const NINE = "PPPPPPPPP";
+
+  it("bets the second hand of a three at two units only after the first lost", () => {
+    const result = pairs(NINE + "P".repeat(9));
+    const placed = result.hands.filter((row) => row.bet !== null);
+    expect(placed.map((row) => row.hand)).toEqual([10, 11, 13, 14, 16, 17]);
+    expect(placed.map((row) => row.stake)).toEqual([50, 100, 50, 100, 50, 100]);
+    expect(result.net).toBe(-450);
+    expect(result.groups[0]).toMatchObject({ callsRight: 0, callsWrong: 9 });
+  });
+
+  it("sits out the rest of a three after a win, and never bets the third hand", () => {
+    const result = pairs(NINE + "BPP");
+    expect(result.hands.slice(9).map((row) => row.skipped)).toEqual([null, "cycle-won", "off-step"]);
+    expect(result.next).toMatchObject({ hand: 13, bet: "banker", stake: 50 });
+  });
+
+  it("opens each three on one unit however the last one ended", () => {
+    const result = pairs(NINE + "PPP" + "P");
+    expect(result.hands[12]!.stake).toBe(50);
+  });
+
+  it("reads the doubled second hand as the next bet", () => {
+    expect(pairs(NINE + "P").next).toMatchObject({ hand: 11, bet: "banker", stake: 100 });
+    expect(pairs(NINE + "B").next).toMatchObject({ hand: 11, skipped: "cycle-won", bet: null });
+  });
+
+  it("stops for the shoe once it is six units up", () => {
+    const result = pairs(nineOppositeWins(63));
+    expect(result.targetReachedAt).not.toBeNull();
+    expect(result.hands.find((row) => row.hand === result.targetReachedAt)!.balance).toBeGreaterThanOrEqual(300);
   });
 });

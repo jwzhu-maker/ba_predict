@@ -47,7 +47,10 @@ export default function SystemRecord() {
   }
 
   const ahead = record.net >= 0;
-  const target = record.config.stopAtNetWins;
+  // Either kind of stop-win: "Reached +8" net wins, or a money target.
+  const target = record.config.stopAtNetWins ?? record.config.stopAtProfit;
+  const targetLabel =
+    record.config.stopAtNetWins != null ? `Reached +${record.config.stopAtNetWins}` : "Hit stop-win";
 
   return (
     <Card
@@ -75,7 +78,7 @@ export default function SystemRecord() {
         />
         {target != null ? (
           <Stat
-            label={`Reached +${target}`}
+            label={targetLabel}
             value={formatPercent(record.shoesTargetReached / record.shoesWithBets, 0)}
             hint={`${record.shoesTargetReached} of ${record.shoesWithBets} shoes`}
           />

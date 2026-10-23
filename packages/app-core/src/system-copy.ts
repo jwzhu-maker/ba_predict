@@ -1,4 +1,4 @@
-import type { BettingSystemConfig, SystemRun } from "@ba-predict/engine";
+import { isBetStep, isCycleStart, type BettingSystemConfig, type SystemRun } from "@ba-predict/engine";
 
 /**
  * The derived readings both clients need from a `SystemRun`.
@@ -61,7 +61,13 @@ export function bettableHands(run: SystemRun): number {
     handsAvailable,
     targetReachedAt ?? Infinity,
   );
-  return Math.max(0, last - config.lookback);
+  if (config.betSteps == null) return Math.max(0, last - config.lookback);
+  // A rule that bets only some positions of a group can only have bet those.
+  let count = 0;
+  for (let hand = config.lookback + 1; hand <= last; hand += 1) {
+    if (isBetStep(config, ((hand - config.lookback - 1) % config.groupSize) + 1)) count += 1;
+  }
+  return count;
 }
 
 /**
@@ -114,7 +120,9 @@ export function oddsOfCleanGroup(groupSize: number): number {
 /** The biggest stake the ladder can ask for, before any table maximum. */
 export function topStake(config: BettingSystemConfig): number {
   const rungs = Math.max(0, config.maxLadderSteps - 1);
-  if (config.staking === "martingale") return config.baseStake * 2 ** rungs;
+  if (config.staking === "martingale" || config.staking === "double") {
+    return config.baseStake * 2 ** rungs;
+  }
   return config.baseStake + rungs * config.stakeStep;
 }
 
@@ -143,6 +151,72 @@ function ordinal(value: number): string {
   return ORDINALS[value] ?? `${value}th`;
 }
 
+/** How a run's 1-based `group` is numbered on screen (see `firstGroupNumber`). */
+export function groupLabel(config: BettingSystemConfig, group: number): number {
+  return group + (config.firstGroupNumber ?? 1) - 1;
+}
+
+/** The hint under "Bets placed": which hands the rule bets at all. */
+export function describeBetSelection(config: BettingSystemConfig): string {
+  if (config.cycleStarts != null) return "First of each three, the second after a loss";
+  if (config.betSteps != null) return `Hands ${listSteps(config.betSteps)} of each group`;
+  return config.groupsGateBetting ? "A group stops at its first loss" : "Every hand in the range";
+}
+
+/** "1, 4 and 7" */
+function listSteps(steps: readonly number[]): string {
+  const all = [...steps];
+  const last = all.pop();
+  return all.length > 0 ? `${all.join(", ")} and ${last}` : `${last ?? ""}`;
+}
+
+/**
+ * The stop-win, as the clause "wins are 8 ahead of losses" or "it is $300
+ * up", for any copy that says the run has stopped there. Null without one.
+ */
+export function describeStopWinTarget(
+  config: BettingSystemConfig,
+  money: SystemCopyMoney,
+): string | null {
+  if (config.stopAtProfit != null) return `it is ${money.format(config.stopAtProfit)} up`;
+  if (config.stopAtNetWins != null) return `wins are ${config.stopAtNetWins} ahead of losses`;
+  return null;
+}
+
+/** The next group position at or after `step` that the rule bets, or null. */
+function nextLiveStep(config: BettingSystemConfig, step: number, needCycleStart: boolean): number | null {
+  for (let candidate = step; candidate <= config.groupSize; candidate += 1) {
+    if (!isBetStep(config, candidate)) continue;
+    if (needCycleStart && !isCycleStart(config, candidate)) continue;
+    return candidate;
+  }
+  return null;
+}
+
+/**
+ * Why a rule that bets only some hands of a group is sitting this one out,
+ * and which hand it bets next: the "off-step" and "cycle-won" readings.
+ */
+export function describeSittingOut(run: SystemRun): string | null {
+  const { config, next } = run;
+  if ((next.skipped !== "off-step" && next.skipped !== "cycle-won") || next.step === null) {
+    return null;
+  }
+  const why =
+    next.skipped === "cycle-won"
+      ? `The bet before this one won, so ${run.name} sits out the rest of that three.`
+      : `${run.name} does not bet hand ${next.step} of a group.`;
+  const nextStep = nextLiveStep(config, next.step + 1, next.skipped === "cycle-won");
+  const resume =
+    nextStep !== null
+      ? next.hand + (nextStep - next.step)
+      : next.hand + (config.groupSize - next.step + 1);
+  if (config.lastHand !== null && resume > config.lastHand) {
+    return `${why} Nothing more this shoe: hand ${config.lastHand} is the last it plays.`;
+  }
+  return `${why} The next bet is on hand ${resume}.`;
+}
+
 /** Just enough of a money formatter for the copy below. */
 export interface SystemCopyMoney {
   format(value: number): string;
@@ -161,15 +235,22 @@ export function describeSystemRules(config: BettingSystemConfig, money: SystemCo
   const opening = `Watch ${config.lookback} hands, then from hand ${config.lookback + 1} back the opposite of the hand ${config.lookback} before it.`;
 
   const recovery = config.recoveryWins ?? 2;
+  const unit = money.format(config.baseStake);
   const ladder =
-    config.staking === "martingale"
+    config.staking === "double" && config.cycleStarts != null
+      ? `Groups of ${config.groupSize}, played in threes from hands ${listSteps(config.cycleStarts)}: the first hand of a three is bet at one unit (${unit}). A win sits out the rest of that three; a loss bets the next hand at ${money.format(topStake(config))}, and the third hand is never bet.`
+      : config.staking === "double"
+      ? `Groups of ${config.groupSize}, betting only hands ${listSteps(config.betSteps ?? [])} of each, at ${martingaleUnits(config)} with one unit being ${unit}: double after each loss, stay at ${money.format(topStake(config))} until a win, and back to one unit after any win. The stake carries from one group to the next.`
+      : config.staking === "martingale"
       ? `Every hand after that carries a stake of ${martingaleUnits(config)} in turn, one unit being ${money.format(config.baseStake)}: double after each loss, back to one unit after a win below the top. A loss at ${money.format(topStake(config))} holds the stake there — a win while holding does not reset it — until it is ${recovery} net win${recovery === 1 ? "" : "s"} up at that stake, then it drops to one unit — once the climb's losses are actually won back, which a table maximum or Banker commission can delay.`
       : config.groupsGateBetting
     ? `Groups of ${config.groupSize}, opening at ${money.format(config.baseStake)} and adding ${money.format(config.stakeStep)} after each win, stopping the group on its first loss.`
     : `Every hand after that carries a stake: ${money.format(config.baseStake)}, adding ${money.format(config.stakeStep)} after each win up to ${money.format(topStake(config))}, and back to ${money.format(config.baseStake)} after a ${ordinal(config.maxLadderSteps)} straight win or after any loss.`;
 
   const target =
-    config.stopAtNetWins != null
+    config.stopAtProfit != null
+      ? `Once it is ${money.format(config.stopAtProfit)} up, it stops for the rest of the shoe. `
+      : config.stopAtNetWins != null
       ? `Once wins outnumber losses by ${config.stopAtNetWins}, it stops for the rest of the shoe. `
       : "";
   const stop =
@@ -189,6 +270,13 @@ export function describeSystemRules(config: BettingSystemConfig, money: SystemCo
  * does.
  */
 export function describeRunShape(config: BettingSystemConfig): string {
+  if (config.staking === "double") {
+    const early = config.stopAtProfit != null ? " until the stop-win, when it stops for the shoe" : "";
+    if (config.cycleStarts != null) {
+      return `each three ends one unit up unless both of its bets lose — about one three in four — which costs three units${config.stopAtProfit != null ? ", until the stop-win ends the shoe" : ""}. A win on the two-unit bet wins back the first unit and one more. Sitting hands out changes how much is staked, not the house edge on it.`;
+    }
+    return `only ${config.betSteps?.length ?? config.groupSize} hands in ${config.groupSize} are staked${early}, and a loss doubles the next one up to ${martingaleUnits(config).replace(/.* and /, "")}, so most losses are won back on a later bet — until a run of losses at the top. Doubling changes when the money moves, not the house edge on it.`;
+  }
   if (config.staking === "martingale") {
     const early =
       config.stopAtNetWins != null
@@ -233,6 +321,15 @@ export function describeBetRate(config: BettingSystemConfig): string | null {
   if (range === null || range === 0 || config.groupSize <= 0) return null;
 
   const where = `of the ${range} hands from ${config.lookback + 1} to ${config.lastHand}`;
+  if (config.betSteps != null) {
+    const groups = Math.floor(range / config.groupSize);
+    const stop = config.stopAtProfit != null ? ", unless it reaches its stop-win first" : "";
+    if (config.cycleStarts != null) {
+      const opens = groups * config.cycleStarts.length;
+      return `On a full shoe it stakes between ${opens} and ${opens * 2} ${where}${stop}.`;
+    }
+    return `On a full shoe it stakes ${groups * config.betSteps.length} ${where}${stop}.`;
+  }
   if (!config.groupsGateBetting) {
     return config.stopAtNetWins != null
       ? `On a full shoe it stakes every one ${where}, unless it gets ${config.stopAtNetWins} wins ahead first and stops there.`
@@ -298,6 +395,8 @@ export function nextHandDetail(
   const rung =
     next.holdNet !== null
       ? `holding the top stake, ${next.holdNet >= 0 ? "+" : ""}${next.holdNet} of +${recovery} net${owed}`
+      : config.staking === "double"
+        ? `group ${groupLabel(config, next.group ?? 1)}, hand ${next.step} of ${config.groupSize}, doubling step ${next.ladderStep} of ${config.maxLadderSteps}`
       : config.staking === "martingale"
         ? `doubling step ${next.ladderStep} of ${config.maxLadderSteps}`
         : config.groupsGateBetting
@@ -330,7 +429,24 @@ function describeNetHands(netHands: number): string {
  * is the caller's to say (the run card knows when it is showing the last
  * shoe); a run past its last hand is over whatever the caller says.
  */
-export function describeStopWinResult(run: SystemRun, shoeOver = false): string | null {
+export function describeStopWinResult(
+  run: SystemRun,
+  shoeOver = false,
+  money: SystemCopyMoney = { format: (value) => value.toFixed(2) },
+): string | null {
+  const profit = run.config.stopAtProfit;
+  if (profit != null && run.bets > 0) {
+    const pastLast = run.config.lastHand !== null && run.handsAvailable >= run.config.lastHand;
+    if (run.targetReachedAt !== null) {
+      return `Stop-win reached on hand ${run.targetReachedAt}: ${money.format(run.net)} up, and no bets after it.`;
+    }
+    const where =
+      Math.abs(run.net) < 0.005
+        ? "level"
+        : `${run.net > 0 ? "up" : "down"} ${money.format(Math.abs(run.net))}`;
+    if (shoeOver || pastLast) return `Finished ${where}, short of the ${money.format(profit)} stop-win.`;
+    return `${where.charAt(0).toUpperCase() + where.slice(1)} so far — it stops for the shoe at ${money.format(profit)} up.`;
+  }
   const target = run.config.stopAtNetWins;
   if (target == null || run.bets === 0) return null;
   if (run.targetReachedAt !== null) {

@@ -281,7 +281,13 @@ function describeSystemSkip(run: SystemRun): string {
     case "past-last-hand":
       return `Done for this shoe — hand ${config.lastHand} is the last one ${run.name} plays.`;
     case "target-reached":
-      return `Done for this shoe — ${run.name} is ${config.stopAtNetWins} hands up, its stop-win.`;
+      return config.stopAtProfit != null
+        ? `Done for this shoe — ${run.name} reached its stop-win.`
+        : `Done for this shoe — ${run.name} is ${config.stopAtNetWins} hands up, its stop-win.`;
+    case "off-step":
+      return `${run.name} does not bet hand ${next.step} of a group.`;
+    case "cycle-won":
+      return `That three already won, so ${run.name} sits this hand out.`;
     default:
       return `${run.name} is not betting this coup.`;
   }

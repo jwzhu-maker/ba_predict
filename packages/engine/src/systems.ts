@@ -32,7 +32,12 @@ import { settleWager } from "./session";
 /** Sides a system can back. Ties are never a bet here. */
 export type SystemSide = "player" | "banker";
 
-export type BettingSystemId = "reverse-12" | "reverse-streak-4" | "reverse-streak-4-martingale";
+export type BettingSystemId =
+  | "reverse-12"
+  | "reverse-streak-4"
+  | "reverse-streak-4-martingale"
+  | "nine-opposite-147"
+  | "nine-opposite-pairs";
 
 /**
  * How the stake moves between bets.
@@ -47,8 +52,13 @@ export type BettingSystemId = "reverse-12" | "reverse-streak-4" | "reverse-strea
  * also waits until the climb's money is actually back, for the cases where
  * two wins do not pay it: a stake cut by the table maximum, Banker
  * commission, or a loss inside the hold.
+ *
+ * "double" is the plain version: double after each loss, up to
+ * `maxLadderSteps` stakes (1, 2, 4, 8 at four), stay at the top stake while
+ * it keeps losing, and back to the base on any win. No hold, no recovery
+ * count — the 9 Opposite systems play it.
  */
-export type SystemStaking = "ladder" | "martingale";
+export type SystemStaking = "ladder" | "martingale" | "double";
 
 /**
  * The knobs. Two systems share them, and the pair that separates those two is
@@ -104,6 +114,29 @@ export interface BettingSystemConfig {
    * reaches this. Omitted or null never stops on it.
    */
   stopAtNetWins?: number | null;
+  /**
+   * Stop betting for the rest of the shoe once the run is this much up, in
+   * currency. Omitted or null never stops on it.
+   */
+  stopAtProfit?: number | null;
+  /**
+   * The positions in a group (1-based) that may carry a bet. Omitted or null
+   * bets every position. 9 Opposite (1-4-7) bets only 1, 4 and 7 of nine.
+   */
+  betSteps?: readonly number[] | null;
+  /**
+   * Positions in a group that open a "cycle": the stake goes back to the
+   * base there, and a win inside a cycle sits out the rest of it. Omitted or
+   * null has no cycles. 9 Opposite (pairs) opens cycles at 1, 4 and 7, and
+   * bets the second hand of a cycle only after its first one lost.
+   */
+  cycleStarts?: readonly number[] | null;
+  /**
+   * The number the first BETTING group is shown as. Omitted means 1. The
+   * 9 Opposite rule counts its watched first nine as group 1, so the groups
+   * it plays are 2 to 7; the run's `group` fields stay 1-based either way.
+   */
+  firstGroupNumber?: number;
 }
 
 export const REVERSE_TWELVE_CONFIG: BettingSystemConfig = {
@@ -150,6 +183,50 @@ export const REVERSE_STREAK_FOUR_MARTINGALE_CONFIG: BettingSystemConfig = {
   stopAtNetWins: 8,
 };
 
+/**
+ * 9 Opposite, first method: groups of nine, the first group only watched,
+ * then groups 2 to 7 (hands 10 to 63) played against the hand nine back.
+ * Only the 1st, 4th and 7th hand of a group is bet. The stake doubles after a
+ * loss — 1, 2, 4, 8 units, staying at 8 until a win — and any win drops it
+ * back to one unit. It carries from group to group. The shoe stops once the
+ * run is six units up.
+ */
+export const NINE_OPPOSITE_147_CONFIG: BettingSystemConfig = {
+  lookback: 9,
+  groupSize: 9,
+  baseStake: 50,
+  stakeStep: 0,
+  lastHand: 63,
+  groupsGateBetting: false,
+  maxLadderSteps: 4,
+  staking: "double",
+  firstGroupNumber: 2,
+  stopAtProfit: 300,
+  betSteps: [1, 4, 7],
+};
+
+/**
+ * 9 Opposite, second method: the same groups and side, played in threes.
+ * Each three (hands 1-3, 4-6 and 7-9 of a group) opens with one unit on its
+ * first hand. A win sits out the rest of the three; a loss bets the second
+ * hand at two units, and the third hand is never bet. The shoe stops once
+ * the run is six units up.
+ */
+export const NINE_OPPOSITE_PAIRS_CONFIG: BettingSystemConfig = {
+  lookback: 9,
+  groupSize: 9,
+  baseStake: 50,
+  stakeStep: 0,
+  lastHand: 63,
+  groupsGateBetting: false,
+  maxLadderSteps: 2,
+  staking: "double",
+  firstGroupNumber: 2,
+  stopAtProfit: 300,
+  betSteps: [1, 2, 4, 5, 7, 8],
+  cycleStarts: [1, 4, 7],
+};
+
 export interface BettingSystemDefinition {
   id: BettingSystemId;
   name: string;
@@ -176,6 +253,18 @@ export const BETTING_SYSTEMS: readonly BettingSystemDefinition[] = [
     summary: "The same mirror on every hand, doubling after a loss up to 8 units, stopping at 8 net wins.",
     defaults: REVERSE_STREAK_FOUR_MARTINGALE_CONFIG,
   },
+  {
+    id: "nine-opposite-147",
+    name: "9 Opposite (1-4-7)",
+    summary: "Mirror the hand 9 back on hands 1, 4 and 7 of each nine, doubling after a loss up to 8 units.",
+    defaults: NINE_OPPOSITE_147_CONFIG,
+  },
+  {
+    id: "nine-opposite-pairs",
+    name: "9 Opposite (pairs)",
+    summary: "Mirror the hand 9 back in threes: one unit, and two on the next hand only after a loss.",
+    defaults: NINE_OPPOSITE_PAIRS_CONFIG,
+  },
 ];
 
 /** The system a run falls back to when none is named. */
@@ -198,7 +287,11 @@ export type SystemSkipReason =
   | "group-over"
   | "past-last-hand"
   | "target-reached"
-  | "below-minimum";
+  | "below-minimum"
+  /** A group position the rule never bets (9 Opposite's 2nd, 3rd, 5th ...). */
+  | "off-step"
+  /** The current cycle already won, so the rest of it is sat out. */
+  | "cycle-won";
 
 /** One hand of the tie-free sequence, and what the system did with it. */
 export interface SystemHand {
@@ -243,6 +336,14 @@ export interface SystemGroup {
   lostAt: number | null;
   /** True when every hand in the group was bet and won — its best case. */
   perfect: boolean;
+  /**
+   * Of the hands the group covers, how many came out the side the rule
+   * called (the opposite of the hand `lookback` back) and how many did not,
+   * bet or not. On a system that bets only some hands, this is the group's
+   * own tally of the rule.
+   */
+  callsRight: number;
+  callsWrong: number;
 }
 
 /**
@@ -384,9 +485,28 @@ function isMartingale(config: BettingSystemConfig): boolean {
   return config.staking === "martingale";
 }
 
+function isDoubling(config: BettingSystemConfig): boolean {
+  return config.staking === "double";
+}
+
+/** Whether the rule ever bets this 1-based group position. */
+export function isBetStep(config: BettingSystemConfig, step: number): boolean {
+  return config.betSteps == null || config.betSteps.includes(step);
+}
+
+/** Whether this 1-based group position opens a cycle. */
+export function isCycleStart(config: BettingSystemConfig, step: number): boolean {
+  return config.cycleStarts != null && config.cycleStarts.includes(step);
+}
+
+/** Bets a fully played group can at most land with every one won. */
+function betsInCleanGroup(config: BettingSystemConfig): number {
+  return config.cycleStarts?.length ?? config.betSteps?.length ?? config.groupSize;
+}
+
 /** What the rule asks to stake from this state, before any table maximum. */
 function askFor(config: BettingSystemConfig, state: StakeState): number {
-  if (isMartingale(config)) {
+  if (isMartingale(config) || isDoubling(config)) {
     const top = Math.max(0, config.maxLadderSteps - 1);
     return config.baseStake * 2 ** (state.holding ? top : Math.min(state.level, top));
   }
@@ -396,6 +516,7 @@ function askFor(config: BettingSystemConfig, state: StakeState): number {
 /** 1-based rung the next stake sits on: the top rung while a Martingale holds. */
 function rungOf(config: BettingSystemConfig, state: StakeState): number {
   if (isMartingale(config)) return state.holding ? config.maxLadderSteps : state.level + 1;
+  if (isDoubling(config)) return Math.min(state.level, Math.max(0, config.maxLadderSteps - 1)) + 1;
   return state.banked + 1;
 }
 
@@ -407,6 +528,13 @@ function advanceStake(
   profit: number,
   clipped: boolean,
 ): void {
+  if (isDoubling(config)) {
+    // Double on a loss, stay at the top stake while it keeps losing, and
+    // drop to the base on any win.
+    if (won) Object.assign(state, FRESH_STAKE);
+    else state.level = Math.min(state.level + 1, Math.max(0, config.maxLadderSteps - 1));
+    return;
+  }
   if (!isMartingale(config)) {
     if (won) {
       state.banked += 1;
@@ -580,6 +708,8 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
   // target ever sets.
   const stakeState: StakeState = { ...FRESH_STAKE };
   let groupDead = false;
+  // A win inside a cycle sits out the rest of it (`cycleStarts`).
+  let cycleWon = false;
   let targetReachedAt: number | null = null;
   let current: SystemGroup | null = null;
 
@@ -626,9 +756,23 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
           net: 0,
           lostAt: null,
           perfect: false,
+          callsRight: 0,
+          callsWrong: 0,
         };
         groups.push(current);
       }
+
+      // A cycle opens on the base stake and is live again, wherever the
+      // last one left the stake.
+      if (isCycleStart(config, step)) {
+        Object.assign(stakeState, FRESH_STAKE);
+        cycleWon = false;
+      }
+
+      // The group's own tally of the rule, bet or not.
+      const called = opposite(sequence[hand - config.lookback - 1]!.outcome);
+      if (entry.outcome === called) current!.callsRight += 1;
+      else current!.callsWrong += 1;
     }
 
     const skipped: SystemSkipReason | null = pastEnd
@@ -639,7 +783,11 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
           ? "target-reached"
           : groupDead
             ? "group-over"
-            : null;
+            : step !== null && !isBetStep(config, step)
+              ? "off-step"
+              : cycleWon
+                ? "cycle-won"
+                : null;
 
     if (skipped !== null) {
       hands.push({
@@ -732,15 +880,15 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
     // Recomputed rather than set on the winning sixth hand, because a group
     // that keeps betting after a loss can also reach six bets: `bets === 6`
     // alone would call a 5-1 group clean.
-    group_.perfect = group_.lostAt === null && group_.bets === config.groupSize;
+    group_.perfect = group_.lostAt === null && group_.bets === betsInCleanGroup(config);
 
     advanceStake(config, stakeState, won, settlement.profit, stake < wanted - 1e-9);
     if (!won && config.groupsGateBetting) groupDead = true;
-    if (
-      config.stopAtNetWins != null &&
-      targetReachedAt === null &&
-      wins - losses >= config.stopAtNetWins
-    ) {
+    if (won && config.cycleStarts != null) cycleWon = true;
+    const netWinsTarget =
+      config.stopAtNetWins != null && wins - losses >= config.stopAtNetWins;
+    const profitTarget = config.stopAtProfit != null && balance >= config.stopAtProfit - 1e-9;
+    if (targetReachedAt === null && (netWinsTarget || profitTarget)) {
       targetReachedAt = hand;
       // The group ends here too: it covers no hand the rule will play.
       group_.lastHand = hand;
@@ -764,7 +912,16 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
 
   const target = config.lastHand;
   return {
-    next: describeNext(sequence, config, stakeState, groupDead, targetReachedAt !== null, tableMax, bankroll),
+    next: describeNext(
+      sequence,
+      config,
+      stakeState,
+      groupDead,
+      cycleWon,
+      targetReachedAt !== null,
+      tableMax,
+      bankroll,
+    ),
     id: definition.id,
     name: definition.name,
     config,
@@ -804,6 +961,7 @@ function describeNext(
   config: BettingSystemConfig,
   stakeState: StakeState,
   groupDead: boolean,
+  cycleWon: boolean,
   targetReached: boolean,
   tableMax: number | null,
   bankroll: number | null,
@@ -839,8 +997,13 @@ function describeNext(
   // never set and the ladder carries across the boundary untouched.
   const opening = step === 1 && config.groupsGateBetting;
   if (!opening && groupDead) return idle("group-over", group, step);
+  if (!isBetStep(config, step)) return idle("off-step", group, step);
+  // A cycle start is live and back on the base stake, however the last
+  // cycle ended; anywhere else in a cycle that already won, sit it out.
+  const cycleOpening = isCycleStart(config, step);
+  if (!cycleOpening && cycleWon) return idle("cycle-won", group, step);
 
-  const state = opening ? FRESH_STAKE : stakeState;
+  const state = opening || cycleOpening ? FRESH_STAKE : stakeState;
   const referenceHand = hand - config.lookback;
   const reference = sequence[referenceHand - 1];
   // Defensive: with lookback >= 1 this hand always exists, because the

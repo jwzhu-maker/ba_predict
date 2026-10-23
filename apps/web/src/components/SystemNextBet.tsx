@@ -1,4 +1,10 @@
-import { nextHandDetail, readSystemNext, tieReconciliation } from "@ba-predict/app-core";
+import {
+  describeSittingOut,
+  describeStopWinTarget,
+  nextHandDetail,
+  readSystemNext,
+  tieReconciliation,
+} from "@ba-predict/app-core";
 import { Card } from "./Primitives";
 import { useAppState, useMoney, useSystemRun } from "../state/store";
 
@@ -59,11 +65,14 @@ export default function SystemNextBet() {
     if (next.skipped === "target-reached") {
       return (
         <p className="prose">
-          Done for this shoe — wins are {run.config.stopAtNetWins} ahead of losses, which is
-          where {run.name} stops. It starts again on the next shoe.
+          Done for this shoe — {describeStopWinTarget(run.config, money)}, which is where{" "}
+          {run.name} stops. It starts again on the next shoe.
         </p>
       );
     }
+    // 9 Opposite bets only some hands of a group.
+    const sittingOut = describeSittingOut(run);
+    if (sittingOut !== null) return <p className="prose">{sittingOut}</p>;
     // Only a system whose groups gate play can reach this; Reverse Streak
     // 4 never sits a hand out once it has started.
     if (next.skipped === "group-over") {
