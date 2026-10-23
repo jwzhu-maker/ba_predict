@@ -273,7 +273,7 @@ export function describeRunShape(config: BettingSystemConfig): string {
   if (config.staking === "double") {
     const early = config.stopAtProfit != null ? " until the stop-win, when it stops for the shoe" : "";
     if (config.cycleStarts != null) {
-      return `each three ends one unit up unless both of its bets lose — about one three in four — which costs three units${config.stopAtProfit != null ? ", until the stop-win ends the shoe" : ""}. A win on the two-unit bet wins back the first unit and one more. Sitting hands out changes how much is staked, not the house edge on it.`;
+      return `each three ends about one unit up — a little less when the winning bet is on Banker, after commission — unless both of its bets lose, about one three in four, which costs three units${config.stopAtProfit != null ? ", until the stop-win ends the shoe" : ""}. Sitting hands out changes how much is staked, not the house edge on it.`;
     }
     return `only ${config.betSteps?.length ?? config.groupSize} hands in ${config.groupSize} are staked${early}, and a loss doubles the next one up to ${martingaleUnits(config).replace(/.* and /, "")}, so most losses are won back on a later bet — until a run of losses at the top. Doubling changes when the money moves, not the house edge on it.`;
   }

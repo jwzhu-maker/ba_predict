@@ -898,6 +898,18 @@ describe("9 Opposite (1-4-7)", () => {
     expect(result.next.skipped).toBe("target-reached");
   });
 
+  it("does not stop on a Banker win it could not settle exactly", () => {
+    // No-commission table, and recorded coups that do not say whether Banker
+    // won on 6: each Banker win is credited 50 but may have paid 25.
+    const result = nine(nineOppositeWins(45), {
+      rules: { ...DEFAULT_RULES, bankerSixPayout: 0.5 },
+    });
+    // Hand 25 is 300 up provisionally (three Banker, three Player wins) but
+    // only 225 for certain; hand 34 is the first that is 300 up for certain.
+    expect(result.hands.find((row) => row.hand === 25)!.balance).toBe(300);
+    expect(result.targetReachedAt).toBe(34);
+  });
+
   it("stops after hand 63", () => {
     const result = nine(NINE + "P".repeat(60));
     expect(result.hands.filter((row) => row.bet !== null).every((row) => row.hand <= 63)).toBe(true);

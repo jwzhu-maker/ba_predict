@@ -701,6 +701,11 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
   let peakStake = 0;
   let clippedBets = 0;
   let approximate = false;
+  // How much the balance may be overstating: an unsettled no-commission
+  // Banker win is credited in full, but may have been a win on 6 that pays
+  // only `bankerSixPayout`. A money stop-win counts only the money that is
+  // certain, so a provisional credit can never stop the run early.
+  let uncertainCredit = 0;
 
   // Live stake state (see `StakeState`). `groupDead` is the "stop until the
   // next group" rule, which only a gated system ever sets; `targetReachedAt`
@@ -850,6 +855,9 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
       rules,
     );
     if (settlement.unsettled) approximate = true;
+    if (settlement.unsettled && settlement.result === "win") {
+      uncertainCredit += settlement.profit - stake * Math.min(1, rules.bankerSixPayout ?? 1);
+    }
 
     // Ties are gone, so a Player/Banker bet here can only win or lose. Asking
     // for "win" rather than "not loss" keeps a push — which only a future rule
@@ -887,7 +895,8 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
     if (won && config.cycleStarts != null) cycleWon = true;
     const netWinsTarget =
       config.stopAtNetWins != null && wins - losses >= config.stopAtNetWins;
-    const profitTarget = config.stopAtProfit != null && balance >= config.stopAtProfit - 1e-9;
+    const profitTarget =
+      config.stopAtProfit != null && balance - uncertainCredit >= config.stopAtProfit - 1e-9;
     if (targetReachedAt === null && (netWinsTarget || profitTarget)) {
       targetReachedAt = hand;
       // The group ends here too: it covers no hand the rule will play.
