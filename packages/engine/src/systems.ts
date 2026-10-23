@@ -456,8 +456,10 @@ export interface SystemRun {
   /** Hands the rule called but could not place, being under the table minimum. */
   belowMinimumHands: number;
   /**
-   * Every group's `callsRight` and `callsWrong` added up: over all the hands
-   * the run's groups covered (bet or not), how often the rule's side came out.
+   * Over every hand from the first betting hand to `lastHand` (or the end of
+   * the shoe), bet or not, how often the rule's side came out. Unlike the
+   * group rows it keeps counting after a stop-win: it measures the rule, not
+   * the bets.
    */
   callsRight: number;
   callsWrong: number;
@@ -963,9 +965,24 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
     netHands: wins - losses,
     targetReachedAt,
     belowMinimumHands: hands.filter((row) => row.skipped === "below-minimum").length,
-    callsRight: groups.reduce((sum, group) => sum + group.callsRight, 0),
-    callsWrong: groups.reduce((sum, group) => sum + group.callsWrong, 0),
+    ...tallyCalls(sequence, config),
   };
+}
+
+/** The rule's call on every hand in its range, right or wrong, bet or not. */
+function tallyCalls(
+  sequence: readonly { outcome: SystemSide }[],
+  config: BettingSystemConfig,
+): { callsRight: number; callsWrong: number } {
+  const last = Math.min(config.lastHand ?? Infinity, sequence.length);
+  let callsRight = 0;
+  let callsWrong = 0;
+  for (let hand = config.lookback + 1; hand <= last; hand += 1) {
+    const called = opposite(sequence[hand - config.lookback - 1]!.outcome);
+    if (sequence[hand - 1]!.outcome === called) callsRight += 1;
+    else callsWrong += 1;
+  }
+  return { callsRight, callsWrong };
 }
 
 /**

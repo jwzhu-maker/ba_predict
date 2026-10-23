@@ -907,6 +907,9 @@ describe("9 Opposite (1-4-7)", () => {
     const reached = result.hands.find((row) => row.hand === result.targetReachedAt)!;
     expect(reached.balance).toBeGreaterThanOrEqual(300);
     expect(result.hands.filter((row) => row.hand > result.targetReachedAt! && row.bet !== null)).toHaveLength(0);
+    // The hand tally keeps going to hand 45, past the stop-win: every hand
+    // of this shoe is the opposite of the hand nine back.
+    expect(result).toMatchObject({ callsRight: 36, callsWrong: 0 });
     expect(result.next.skipped).toBe("target-reached");
   });
 

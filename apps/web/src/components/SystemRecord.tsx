@@ -1,4 +1,3 @@
-import { groupLabel } from "@ba-predict/app-core";
 import { Card, Notice, Stat } from "./Primitives";
 import { formatPercent } from "../lib/format";
 import { useAppState, useMoney, useSystemRecord } from "../state/store";
@@ -100,7 +99,7 @@ export default function SystemRecord() {
           <Stat
             label="Hands won / lost"
             value={`${record.callsRight} / ${record.callsWrong}`}
-            hint={`${formatPercent(record.callsRight / (record.callsRight + record.callsWrong), 1)} won, group ${groupLabel(record.config, 1)} onwards`}
+            hint={`${formatPercent(record.callsRight / (record.callsRight + record.callsWrong), 1)} won, every hand from ${record.config.lookback + 1} to ${record.config.lastHand ?? "the end"}`}
           />
         ) : null}
         <Stat

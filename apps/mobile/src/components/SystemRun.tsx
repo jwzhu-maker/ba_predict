@@ -119,7 +119,7 @@ export default function SystemRun() {
           <Stat
             label="Hands won / lost"
             value={`${run.callsRight} / ${run.callsWrong}`}
-            hint={`${formatPercent(run.callsRight / (run.callsRight + run.callsWrong), 0)} won, group ${groupLabel(run.config, 1)} onwards`}
+            hint={`${formatPercent(run.callsRight / (run.callsRight + run.callsWrong), 0)} won, hands ${run.config.lookback + 1}–${Math.min(run.config.lastHand ?? run.handsAvailable, run.handsAvailable)}, after a stop-win too`}
           />
         ) : null}
       </Row>
