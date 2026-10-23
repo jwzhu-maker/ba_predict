@@ -703,8 +703,10 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
   let approximate = false;
   // How much the balance may be overstating: an unsettled no-commission
   // Banker win is credited in full, but may have been a win on 6 that pays
-  // only `bankerSixPayout`. A money stop-win counts only the money that is
-  // certain, so a provisional credit can never stop the run early.
+  // only `bankerSixPayout`. Coups recorded live and shoes archived now carry
+  // the answer, so this only arises on shoes archived before they did. There
+  // the money stop-win counts only the money that is certain: it may then
+  // stop a little late, but it never stops on a payout that did not happen.
   let uncertainCredit = 0;
 
   // Live stake state (see `StakeState`). `groupDead` is the "stop until the

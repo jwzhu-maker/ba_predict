@@ -10,8 +10,8 @@ import type { CoupRecord, Outcome } from "@ba-predict/engine";
  * ~5MB localStorage budget it shares with nothing. One char per coup makes a
  * shoe about 70 bytes.
  *
- * The alphabet encodes all three things a replay needs — outcome, player
- * pair, banker pair — in a single character, so there is nothing to keep in
+ * The alphabet encodes everything a replay needs — outcome, player pair,
+ * banker pair, and whether a Banker win was on 6 — in a single character, so there is nothing to keep in
  * sync between parallel arrays.
  */
 
@@ -25,11 +25,25 @@ const OUTCOMES: readonly Outcome[] = ["player", "banker", "tie"];
  */
 const ALPHABET = "PBTpbtQRSqrs";
 
+/**
+ * A Banker win whose "won on 6" answer is known, which a no-commission table
+ * needs to settle it: index = player pair + 2 * banker pair. A Banker win
+ * without an answer keeps its plain character above, so shoes archived
+ * before these existed decode exactly as they did.
+ */
+const BANKER_ON_SIX = "KLMN";
+const BANKER_NOT_ON_SIX = "UVWX";
+
 export function encodeCoups(coups: readonly CoupRecord[]): string {
   let out = "";
   for (const coup of coups) {
     const outcome = OUTCOMES.indexOf(coup.outcome);
     if (outcome < 0) continue;
+    if (coup.outcome === "banker" && coup.bankerWinOnSix !== undefined) {
+      const pairs = (coup.playerPair ? 1 : 0) + (coup.bankerPair ? 2 : 0);
+      out += (coup.bankerWinOnSix ? BANKER_ON_SIX : BANKER_NOT_ON_SIX)[pairs] ?? "";
+      continue;
+    }
     const index = outcome + (coup.playerPair ? 3 : 0) + (coup.bankerPair ? 6 : 0);
     out += ALPHABET[index] ?? "";
   }
@@ -40,6 +54,18 @@ export function encodeCoups(coups: readonly CoupRecord[]): string {
 export function decodeCoups(encoded: string): CoupRecord[] {
   const coups: CoupRecord[] = [];
   for (const char of encoded) {
+    const onSix = BANKER_ON_SIX.indexOf(char);
+    const notOnSix = BANKER_NOT_ON_SIX.indexOf(char);
+    if (onSix >= 0 || notOnSix >= 0) {
+      const pairs = Math.max(onSix, notOnSix);
+      coups.push({
+        outcome: "banker",
+        playerPair: pairs % 2 === 1,
+        bankerPair: pairs >= 2,
+        bankerWinOnSix: onSix >= 0,
+      });
+      continue;
+    }
     const index = ALPHABET.indexOf(char);
     if (index < 0) continue;
     const outcome = OUTCOMES[index % 3];
