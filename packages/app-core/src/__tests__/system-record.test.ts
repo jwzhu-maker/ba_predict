@@ -258,3 +258,17 @@ describe("the stop-win in the aggregate record", () => {
     expect(record.shoesTargetReached).toBe(0);
   });
 });
+
+describe("the 9 Opposite hand tallies in the aggregate record", () => {
+  it("adds up every shoe's hands won and lost", () => {
+    const shoe = coups("P".repeat(9) + "PPPBBBBBB");
+    const record = aggregateSystemRecord({
+      shoes: [archiveShoe({ coups: shoe, decks: 8, startedAt: 1, endedAt: 2 })!],
+      currentShoe: shoe,
+      rules: DEFAULT_RULES,
+      system: "nine-opposite-147" as const,
+    });
+    expect(record).toMatchObject({ callsRight: 12, callsWrong: 6 });
+    expect(record.perShoe.map((row) => row.callsRight)).toEqual([6, 6]);
+  });
+});

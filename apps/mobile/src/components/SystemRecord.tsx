@@ -1,3 +1,4 @@
+import { groupLabel } from "@ba-predict/app-core";
 import { Text, View } from "react-native";
 import { formatPercent } from "../lib/format";
 import { useAppState, useMoney, useSystemRecord } from "../state/store";
@@ -95,6 +96,13 @@ export default function SystemRecord() {
           tone={record.worstShoe < 0 ? "bad" : "muted"}
         />
         <Stat label="Biggest bet" value={money.format(record.peakStake)} />
+        {record.config.betSteps != null && record.callsRight + record.callsWrong > 0 ? (
+          <Stat
+            label="Hands won / lost"
+            value={`${record.callsRight} / ${record.callsWrong}`}
+            hint={`${formatPercent(record.callsRight / (record.callsRight + record.callsWrong), 1)} won, group ${groupLabel(record.config, 1)} onwards`}
+          />
+        ) : null}
         <Stat
           label="Clean groups"
           value={`${record.perfectGroups} of ${record.groups}`}

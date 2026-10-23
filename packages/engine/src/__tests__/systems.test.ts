@@ -889,6 +889,18 @@ describe("9 Opposite (1-4-7)", () => {
     expect(group).toMatchObject({ callsRight: 6, callsWrong: 3, bets: 3, wins: 2 });
   });
 
+  it("adds the tallies up across every played group", () => {
+    // Group 2 calls Banker throughout: 6 right, 3 wrong. Group 3 mirrors
+    // group 2 (Player, Player, Player, then Banker six times): its calls are
+    // Banker x3 then Player x6, so "PPP" + "BBBBBB" is 0 right of 9.
+    const result = nine(NINE + "PPPBBBBBB" + "PPPBBBBBB");
+    expect(result.groups.map((group) => [group.callsRight, group.callsWrong])).toEqual([
+      [6, 3],
+      [0, 9],
+    ]);
+    expect(result).toMatchObject({ callsRight: 6, callsWrong: 12 });
+  });
+
   it("stops for the shoe once it is six units up", () => {
     const result = nine(nineOppositeWins(45));
     expect(result.targetReachedAt).not.toBeNull();

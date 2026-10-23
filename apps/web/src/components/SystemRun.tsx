@@ -108,6 +108,13 @@ export default function SystemRun() {
           hint="Net over everything staked"
         />
         <Stat label="Clean groups" value={`${run.perfectGroups} of ${run.groups.length}`} />
+        {tallied && run.callsRight + run.callsWrong > 0 ? (
+          <Stat
+            label="Hands won / lost"
+            value={`${run.callsRight} / ${run.callsWrong}`}
+            hint={`${formatPercent(run.callsRight / (run.callsRight + run.callsWrong), 0)} won, group ${groupLabel(run.config, 1)} onwards`}
+          />
+        ) : null}
       </div>
 
       <div className="table-scroll">

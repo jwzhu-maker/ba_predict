@@ -37,6 +37,9 @@ export interface SystemShoeResult {
   incomplete: boolean;
   /** The hand the stop-win landed on, or null if it was not reached (or there is none). */
   targetReachedAt: number | null;
+  /** Hands of the shoe's groups that came out the side the rule called, and did not. */
+  callsRight: number;
+  callsWrong: number;
 }
 
 export interface SystemRecord {
@@ -72,6 +75,12 @@ export interface SystemRecord {
    * `shoesWithBets`. Always 0 for a system without one.
    */
   shoesTargetReached: number;
+  /**
+   * Across every shoe, the hands its groups covered that came out the side
+   * the rule called, and those that did not — bet or not.
+   */
+  callsRight: number;
+  callsWrong: number;
   /** Per-shoe results, oldest first, for a sparkline or a scan down the list. */
   perShoe: SystemShoeResult[];
   approximate: boolean;
@@ -120,6 +129,8 @@ export function aggregateSystemRecord(options: SystemRecordOptions): SystemRecor
   let groups = 0;
   let incompleteShoes = 0;
   let shoesTargetReached = 0;
+  let callsRight = 0;
+  let callsWrong = 0;
   let approximate = false;
   let counted = 0;
 
@@ -142,7 +153,11 @@ export function aggregateSystemRecord(options: SystemRecordOptions): SystemRecor
       peakStake: run.peakStake,
       incomplete: run.incomplete,
       targetReachedAt: run.targetReachedAt,
+      callsRight: run.callsRight,
+      callsWrong: run.callsWrong,
     });
+    callsRight += run.callsRight;
+    callsWrong += run.callsWrong;
 
     bets += run.bets;
     wins += run.wins;
@@ -190,6 +205,8 @@ export function aggregateSystemRecord(options: SystemRecordOptions): SystemRecor
     groups,
     incompleteShoes,
     shoesTargetReached,
+    callsRight,
+    callsWrong,
     perShoe,
     approximate,
   };

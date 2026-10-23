@@ -455,6 +455,12 @@ export interface SystemRun {
   targetReachedAt: number | null;
   /** Hands the rule called but could not place, being under the table minimum. */
   belowMinimumHands: number;
+  /**
+   * Every group's `callsRight` and `callsWrong` added up: over all the hands
+   * the run's groups covered (bet or not), how often the rule's side came out.
+   */
+  callsRight: number;
+  callsWrong: number;
 }
 
 /**
@@ -957,6 +963,8 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
     netHands: wins - losses,
     targetReachedAt,
     belowMinimumHands: hands.filter((row) => row.skipped === "below-minimum").length,
+    callsRight: groups.reduce((sum, group) => sum + group.callsRight, 0),
+    callsWrong: groups.reduce((sum, group) => sum + group.callsWrong, 0),
   };
 }
 
