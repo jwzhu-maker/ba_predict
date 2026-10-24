@@ -163,6 +163,14 @@ export function describeBetSelection(config: BettingSystemConfig): string {
   return config.groupsGateBetting ? "A group stops at its first loss" : "Every hand in the range";
 }
 
+/** Which hands the won/lost tally counts, for the run card's note. */
+export function describeTallyScope(config: BettingSystemConfig): string {
+  if (config.cycleStarts == null && config.betSteps != null) {
+    return `only hands ${listSteps(config.betSteps)} of each group, the ones it bets`;
+  }
+  return "every hand it covers, bet or not";
+}
+
 /** "1, 4 and 7" */
 function listSteps(steps: readonly number[]): string {
   const all = [...steps];

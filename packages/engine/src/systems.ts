@@ -337,10 +337,10 @@ export interface SystemGroup {
   /** True when every hand in the group was bet and won — its best case. */
   perfect: boolean;
   /**
-   * Of the hands the group covers, how many came out the side the rule
-   * called (the opposite of the hand `lookback` back) and how many did not,
-   * bet or not. On a system that bets only some hands, this is the group's
-   * own tally of the rule.
+   * Of the hands the group covers that the tally counts (see `isTallyStep`:
+   * only 1, 4 and 7 on 9 Opposite 1-4-7), how many came out the side the
+   * rule called (the opposite of the hand `lookback` back) and how many did
+   * not, whether or not that hand was bet.
    */
   callsRight: number;
   callsWrong: number;
@@ -500,6 +500,16 @@ function isDoubling(config: BettingSystemConfig): boolean {
 /** Whether the rule ever bets this 1-based group position. */
 export function isBetStep(config: BettingSystemConfig, step: number): boolean {
   return config.betSteps == null || config.betSteps.includes(step);
+}
+
+/**
+ * Whether a group position counts in the won/lost tally. A rule that bets
+ * fixed positions (9 Opposite 1-4-7) counts only those, as it never bets the
+ * rest; a cycle rule (pairs) bets its second hands only sometimes, so every
+ * hand counts.
+ */
+export function isTallyStep(config: BettingSystemConfig, step: number): boolean {
+  return config.cycleStarts != null || isBetStep(config, step);
 }
 
 /** Whether this 1-based group position opens a cycle. */
@@ -784,10 +794,12 @@ export function runBettingSystem(options: RunBettingSystemOptions): SystemRun {
         cycleWon = false;
       }
 
-      // The group's own tally of the rule, bet or not.
-      const called = opposite(sequence[hand - config.lookback - 1]!.outcome);
-      if (entry.outcome === called) current!.callsRight += 1;
-      else current!.callsWrong += 1;
+      // The group's own tally of the rule, on the positions it counts.
+      if (isTallyStep(config, step)) {
+        const called = opposite(sequence[hand - config.lookback - 1]!.outcome);
+        if (entry.outcome === called) current!.callsRight += 1;
+        else current!.callsWrong += 1;
+      }
     }
 
     const skipped: SystemSkipReason | null = pastEnd
@@ -978,6 +990,8 @@ function tallyCalls(
   let callsRight = 0;
   let callsWrong = 0;
   for (let hand = config.lookback + 1; hand <= last; hand += 1) {
+    const step = ((hand - config.lookback - 1) % config.groupSize) + 1;
+    if (!isTallyStep(config, step)) continue;
     const called = opposite(sequence[hand - config.lookback - 1]!.outcome);
     if (sequence[hand - 1]!.outcome === called) callsRight += 1;
     else callsWrong += 1;

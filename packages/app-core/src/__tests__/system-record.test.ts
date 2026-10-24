@@ -268,7 +268,7 @@ describe("the 9 Opposite hand tallies in the aggregate record", () => {
       rules: DEFAULT_RULES,
       system: "nine-opposite-147" as const,
     });
-    expect(record).toMatchObject({ callsRight: 12, callsWrong: 6 });
-    expect(record.perShoe.map((row) => row.callsRight)).toEqual([6, 6]);
+    expect(record).toMatchObject({ callsRight: 4, callsWrong: 2 });
+    expect(record.perShoe.map((row) => row.callsRight)).toEqual([2, 2]);
   });
 });

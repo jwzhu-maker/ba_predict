@@ -4,6 +4,7 @@ import {
   describeBetSelection,
   describeRunShape,
   describeStopWinResult,
+  describeTallyScope,
   describeSystemRules,
   groupLabel,
 } from "@ba-predict/app-core";
@@ -178,7 +179,7 @@ export default function SystemRun() {
 
       {tallied ? (
         <Hint>
-          Under each group, won and lost count every hand it covers, bet or not: won when the
+          Under each group, won and lost count {describeTallyScope(run.config)}: won when the
           hand came out opposite the hand {run.config.lookback} before it. Bets is the bets won
           out of those placed.
         </Hint>

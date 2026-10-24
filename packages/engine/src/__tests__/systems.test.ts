@@ -886,7 +886,8 @@ describe("9 Opposite (1-4-7)", () => {
 
   it("tallies every hand of a group, bet or not", () => {
     const [group] = nine(NINE + "PPPBBBBBB").groups;
-    expect(group).toMatchObject({ callsRight: 6, callsWrong: 3, bets: 3, wins: 2 });
+    // Only hands 1, 4 and 7 count: P (wrong), B (right), B (right).
+    expect(group).toMatchObject({ callsRight: 2, callsWrong: 1, bets: 3, wins: 2 });
   });
 
   it("adds the tallies up across every played group", () => {
@@ -895,10 +896,10 @@ describe("9 Opposite (1-4-7)", () => {
     // Banker x3 then Player x6, so "PPP" + "BBBBBB" is 0 right of 9.
     const result = nine(NINE + "PPPBBBBBB" + "PPPBBBBBB");
     expect(result.groups.map((group) => [group.callsRight, group.callsWrong])).toEqual([
-      [6, 3],
-      [0, 9],
+      [2, 1],
+      [0, 3],
     ]);
-    expect(result).toMatchObject({ callsRight: 6, callsWrong: 12 });
+    expect(result).toMatchObject({ callsRight: 2, callsWrong: 4 });
   });
 
   it("stops for the shoe once it is six units up", () => {
@@ -909,7 +910,8 @@ describe("9 Opposite (1-4-7)", () => {
     expect(result.hands.filter((row) => row.hand > result.targetReachedAt! && row.bet !== null)).toHaveLength(0);
     // The hand tally keeps going to hand 45, past the stop-win: every hand
     // of this shoe is the opposite of the hand nine back.
-    expect(result).toMatchObject({ callsRight: 36, callsWrong: 0 });
+    // Hands 1, 4 and 7 of groups 2-5: hands 10, 13 ... 43.
+    expect(result).toMatchObject({ callsRight: 12, callsWrong: 0 });
     expect(result.next.skipped).toBe("target-reached");
   });
 

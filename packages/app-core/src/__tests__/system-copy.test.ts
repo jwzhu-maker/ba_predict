@@ -17,6 +17,7 @@ import {
   describeSittingOut,
   describeStopWinResult,
   describeStopWinTarget,
+  describeTallyScope,
   describeSystemRules,
   expectedBetsPerGroup,
   handsInRange,
@@ -473,6 +474,13 @@ describe("9 Opposite copy", () => {
     expect(bettableHands(nine(NINE + "P".repeat(60), "nine-opposite-147"))).toBe(18);
     expect(topStake(NINE_OPPOSITE_147_CONFIG)).toBe(400);
     expect(topStake(NINE_OPPOSITE_PAIRS_CONFIG)).toBe(100);
+  });
+
+  it("says which hands the won/lost tally counts", () => {
+    expect(describeTallyScope(NINE_OPPOSITE_147_CONFIG)).toBe(
+      "only hands 1, 4 and 7 of each group, the ones it bets",
+    );
+    expect(describeTallyScope(NINE_OPPOSITE_PAIRS_CONFIG)).toBe("every hand it covers, bet or not");
   });
 
   it("numbers the first played group 2", () => {
