@@ -33,6 +33,23 @@ describe("coup encoding", () => {
     expect(new Set(encodeCoups(all)).size).toBe(12);
   });
 
+  it("keeps whether a Banker win was on 6, and reads old shoes as before", () => {
+    const all: CoupRecord[] = [];
+    for (const bankerWinOnSix of [true, false]) {
+      for (const playerPair of [false, true]) {
+        for (const bankerPair of [false, true]) {
+          all.push({ ...coup("banker", playerPair, bankerPair), bankerWinOnSix });
+        }
+      }
+    }
+    const encoded = encodeCoups(all);
+    expect(encoded).toHaveLength(8);
+    expect(decodeCoups(encoded)).toEqual(all);
+    // A shoe archived before the answer was kept has no field, not `false`.
+    expect(decodeCoups("B")).toEqual([coup("banker")]);
+    expect(new Set(encodeCoups(all) + "PBTpbtQRSqrs").size).toBe(20);
+  });
+
   it("uses one character per coup", () => {
     const shoe = Array.from({ length: 80 }, () => coup("banker"));
     expect(encodeCoups(shoe)).toHaveLength(80);

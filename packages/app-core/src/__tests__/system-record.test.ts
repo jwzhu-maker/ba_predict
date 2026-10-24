@@ -225,3 +225,50 @@ describe("the table minimum in the aggregate record", () => {
     expect(aggregateSystemRecord({ ...base, tableMin: 100 }).bets).toBe(0);
   });
 });
+
+describe("the stop-win in the aggregate record", () => {
+  it("counts the shoes that reached it", () => {
+    const reached = coups("P".repeat(12) + "B".repeat(8) + "PB".repeat(10));
+    const short = coups("P".repeat(12) + "BPBPBP");
+    const record = aggregateSystemRecord({
+      shoes: [],
+      currentShoe: reached,
+      rules: DEFAULT_RULES,
+      system: "reverse-streak-4-martingale" as const,
+    });
+    expect(record.shoesTargetReached).toBe(1);
+    expect(record.perShoe[0]!.targetReachedAt).toBe(20);
+    const missed = aggregateSystemRecord({
+      shoes: [],
+      currentShoe: short,
+      rules: DEFAULT_RULES,
+      system: "reverse-streak-4-martingale" as const,
+    });
+    expect(missed.shoesTargetReached).toBe(0);
+    expect(missed.perShoe[0]!.targetReachedAt).toBeNull();
+  });
+
+  it("is always zero for a system without one", () => {
+    const record = aggregateSystemRecord({
+      shoes: [],
+      currentShoe: coups("P".repeat(12) + "B".repeat(20)),
+      rules: DEFAULT_RULES,
+      system: "reverse-streak-4" as const,
+    });
+    expect(record.shoesTargetReached).toBe(0);
+  });
+});
+
+describe("the 9 Opposite hand tallies in the aggregate record", () => {
+  it("adds up every shoe's hands won and lost", () => {
+    const shoe = coups("P".repeat(9) + "PPPBBBBBB");
+    const record = aggregateSystemRecord({
+      shoes: [archiveShoe({ coups: shoe, decks: 8, startedAt: 1, endedAt: 2 })!],
+      currentShoe: shoe,
+      rules: DEFAULT_RULES,
+      system: "nine-opposite-147" as const,
+    });
+    expect(record).toMatchObject({ callsRight: 4, callsWrong: 2 });
+    expect(record.perShoe.map((row) => row.callsRight)).toEqual([2, 2]);
+  });
+});

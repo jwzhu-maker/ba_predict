@@ -46,6 +46,10 @@ export default function SystemRecord() {
 
   const thin = record.shoesWithBets < 10;
   const ahead = record.net >= 0;
+  // Either kind of stop-win: "Reached +8" net wins, or a money target.
+  const target = record.config.stopAtNetWins ?? record.config.stopAtProfit;
+  const targetLabel =
+    record.config.stopAtNetWins != null ? `Reached +${record.config.stopAtNetWins}` : "Hit stop-win";
 
   return (
     <Card
@@ -72,6 +76,13 @@ export default function SystemRecord() {
           tone={record.perUnit >= 0 ? "good" : "bad"}
           hint="Net over everything staked"
         />
+        {target != null ? (
+          <Stat
+            label={targetLabel}
+            value={formatPercent(record.shoesTargetReached / record.shoesWithBets, 0)}
+            hint={`${record.shoesTargetReached} of ${record.shoesWithBets} shoes`}
+          />
+        ) : null}
         <Stat label="Staked" value={money.format(record.staked)} />
         <Stat
           label="Best shoe"
@@ -84,6 +95,13 @@ export default function SystemRecord() {
           tone={record.worstShoe < 0 ? "bad" : "muted"}
         />
         <Stat label="Biggest bet" value={money.format(record.peakStake)} />
+        {record.config.betSteps != null && record.callsRight + record.callsWrong > 0 ? (
+          <Stat
+            label="Hands won / lost"
+            value={`${record.callsRight} / ${record.callsWrong}`}
+            hint={`${formatPercent(record.callsRight / (record.callsRight + record.callsWrong), 1)} won, every hand from ${record.config.lookback + 1} to ${record.config.lastHand ?? "the end"}`}
+          />
+        ) : null}
         <Stat
           label="Clean groups"
           value={`${record.perfectGroups} of ${record.groups}`}
