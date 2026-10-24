@@ -1240,6 +1240,13 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
+/* How the rule itself went — a stop-win reached or not — under the net. */
+.system-outcome {
+  flex-basis: 100%;
+  margin: 0;
+  font-weight: 600;
+}
+
 /*
  * A group's hand range is context, not a warning, so it must not borrow
  * `.row-note`'s amber — that colour means "this plan broke down" everywhere

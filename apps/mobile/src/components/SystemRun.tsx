@@ -1,8 +1,12 @@
 import { Text, View } from "react-native";
 import {
   bettableHands,
+  describeBetSelection,
   describeRunShape,
+  describeStopWinResult,
+  describeTallyScope,
   describeSystemRules,
+  groupLabel,
 } from "@ba-predict/app-core";
 import { formatPercent } from "../lib/format";
 import { useAppState, useMoney, useSystemRun } from "../state/store";
@@ -28,7 +32,6 @@ export default function SystemRun() {
   const s = useStyles(p);
 
   const possible = bettableHands(run);
-  const gated = run.config.groupsGateBetting;
   // Compared by id, not by `activeSystem === null`: the run falls back to
   // the default for an unselected OR unrecognised id, and either way this
   // card is then showing what that system WOULD have done rather than what
@@ -68,6 +71,12 @@ export default function SystemRun() {
   }
 
   const ahead = run.net >= 0;
+  // A rule that bets only some hands of a group also reports how the rule
+  // called every hand of it, bet or not.
+  const tallied = run.config.betSteps != null;
+  // The Martingale's own result — did it get its eight wins ahead — beside
+  // the money, rather than only as a note on whichever group it landed in.
+  const stopWin = describeStopWinResult(run, finished, money);
 
   return (
     <Card
@@ -80,12 +89,23 @@ export default function SystemRun() {
           {money.format(Math.abs(run.net))}
         </Text>
       </View>
+      {stopWin ? (
+        <Text
+          style={{
+            fontSize: 14,
+            fontWeight: "600",
+            color: run.targetReachedAt !== null ? p.accent : p.text,
+          }}
+        >
+          {stopWin}
+        </Text>
+      ) : null}
 
       <Row>
         <Stat
           label="Bets placed"
           value={`${run.bets} of ${possible}`}
-          hint={gated ? "A group stops at its first loss" : "Every hand in the range"}
+          hint={describeBetSelection(run.config)}
         />
         <Stat label="Won" value={`${run.wins} (${formatPercent(run.wins / run.bets, 0)})`} />
         <Stat label="Staked" value={money.format(run.staked)} />
@@ -96,6 +116,13 @@ export default function SystemRun() {
           tone={run.perUnit >= 0 ? "good" : "bad"}
         />
         <Stat label="Clean groups" value={`${run.perfectGroups} of ${run.groups.length}`} />
+        {tallied && run.callsRight + run.callsWrong > 0 ? (
+          <Stat
+            label="Hands won / lost"
+            value={`${run.callsRight} / ${run.callsWrong}`}
+            hint={`${formatPercent(run.callsRight / (run.callsRight + run.callsWrong), 0)} won, hands ${run.config.lookback + 1}–${Math.min(run.config.lastHand ?? run.handsAvailable, run.handsAvailable)}, after a stop-win too`}
+          />
+        ) : null}
       </Row>
 
       <View style={{ gap: 6, marginTop: 8 }}>
@@ -112,7 +139,9 @@ export default function SystemRun() {
         {run.groups.map((group) => (
           <View key={group.group} style={{ flexDirection: "row", paddingVertical: 3 }}>
             <View style={{ flex: 1.1 }}>
-              <Text style={{ color: p.text, fontSize: 13, fontWeight: "600" }}>{group.group}</Text>
+              <Text style={{ color: p.text, fontSize: 13, fontWeight: "600" }}>
+                {groupLabel(run.config, group.group)}
+              </Text>
               <Text style={{ color: p.muted, fontSize: 10 }}>
                 {run.targetReachedAt !== null && group.lastHand === run.targetReachedAt
                   ? `hands ${group.firstHand}–${group.lastHand}, stop-win reached`
@@ -122,6 +151,11 @@ export default function SystemRun() {
                     ? `hands ${group.firstHand}–${group.lastHand}, lost on ${group.lostAt}`
                     : `hands ${group.firstHand}–${group.lastHand}, shoe ended`}
               </Text>
+              {tallied ? (
+                <Text style={{ color: p.muted, fontSize: 10 }}>
+                  {`${group.callsRight + group.callsWrong} hands: ${group.callsRight} won, ${group.callsWrong} lost`}
+                </Text>
+              ) : null}
             </View>
             <Text style={{ width: 42, textAlign: "right", fontSize: 13, color: p.text }}>
               {group.wins}/{group.bets}
@@ -142,6 +176,14 @@ export default function SystemRun() {
           </View>
         ))}
       </View>
+
+      {tallied ? (
+        <Hint>
+          Under each group, won and lost count {describeTallyScope(run.config)}: won when the
+          hand came out opposite the hand {run.config.lookback} before it. Bets is the bets won
+          out of those placed.
+        </Hint>
+      ) : null}
 
       {run.incomplete ? (
         <Notice tone="info">

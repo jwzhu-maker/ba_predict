@@ -3,6 +3,8 @@ import {
   REVERSE_STREAK_FOUR_CONFIG,
   REVERSE_STREAK_FOUR_MARTINGALE_CONFIG,
   REVERSE_TWELVE_CONFIG,
+  NINE_OPPOSITE_147_CONFIG,
+  NINE_OPPOSITE_PAIRS_CONFIG,
   runBettingSystem,
   type CoupRecord,
   type Outcome,
@@ -12,6 +14,10 @@ import {
   bettableHands,
   describeBetRate,
   describeRunShape,
+  describeSittingOut,
+  describeStopWinResult,
+  describeStopWinTarget,
+  describeTallyScope,
   describeSystemRules,
   expectedBetsPerGroup,
   handsInRange,
@@ -19,6 +25,7 @@ import {
   oddsOfCleanGroup,
   oddsOfReachingTopStep,
   oddsOfTopStepPerHand,
+  groupLabel,
   tieReconciliation,
   topStake,
 } from "../system-copy";
@@ -406,6 +413,34 @@ describe("Reverse Streak 4 Martingale copy", () => {
     );
   });
 
+  it("reports the stop-win result beside the net", () => {
+    // Eight Banker wins against twelve Player reference hands: +8 on hand 20.
+    expect(describeStopWinResult(martingale("P".repeat(12) + "B".repeat(8) + "PB".repeat(20)))).toBe(
+      "Stop-win reached on hand 20: 8 wins ahead, and no bets after it.",
+    );
+    // Three wins, one loss: two ahead, shoe still going.
+    expect(describeStopWinResult(martingale("P".repeat(12) + "BBBP"))).toBe(
+      "2 wins ahead so far — it stops for the shoe at 8 wins ahead.",
+    );
+    expect(describeStopWinResult(martingale(lostFour))).toBe(
+      "4 losses behind so far — it stops for the shoe at 8 wins ahead.",
+    );
+    // The same run once the shoe is over is a result, not a progress report.
+    expect(describeStopWinResult(martingale("P".repeat(12) + "BP"), true)).toBe(
+      "Finished level, short of the 8-win stop.",
+    );
+  });
+
+  it("has no stop-win result before a bet, or for a system without one", () => {
+    expect(describeStopWinResult(martingale("P".repeat(12)))).toBeNull();
+    const ladder = runBettingSystem({
+      coups: coups("P".repeat(12) + "BBBB"),
+      rules: DEFAULT_RULES,
+      system: "reverse-streak-4" as const,
+    });
+    expect(describeStopWinResult(ladder, true)).toBeNull();
+  });
+
   it("describes its shape as a Martingale, not a ladder", () => {
     const shape = describeRunShape(REVERSE_STREAK_FOUR_MARTINGALE_CONFIG);
     expect(shape).toContain("a loss doubles the next one");
@@ -413,3 +448,61 @@ describe("Reverse Streak 4 Martingale copy", () => {
     expect(shape).toContain("until it gets 8 wins ahead, when it stops for the shoe");
   });
 });
+
+describe("9 Opposite copy", () => {
+  const nine = (pattern: string, system: "nine-opposite-147" | "nine-opposite-pairs") =>
+    runBettingSystem({ coups: coups(pattern), rules: DEFAULT_RULES, system });
+  const NINE = "P".repeat(9);
+
+  it("describes each method's bets and the money stop-win", () => {
+    const first = describeSystemRules(NINE_OPPOSITE_147_CONFIG, money);
+    expect(first).toContain("betting only hands 1, 4 and 7 of each");
+    expect(first).toContain("1, 2, 4 and 8 units");
+    expect(first).toContain("stay at $400 until a win");
+    expect(first).toContain("Once it is $300 up, it stops");
+    expect(first).toContain("stops after hand 63");
+    const second = describeSystemRules(NINE_OPPOSITE_PAIRS_CONFIG, money);
+    expect(second).toContain("played in threes from hands 1, 4 and 7");
+    expect(second).toContain("the third hand is never bet");
+  });
+
+  it("counts the bets a full shoe can carry", () => {
+    expect(describeBetRate(NINE_OPPOSITE_147_CONFIG)).toBe(
+      "On a full shoe it stakes 18 of the 54 hands from 10 to 63, unless it reaches its stop-win first.",
+    );
+    expect(describeBetRate(NINE_OPPOSITE_PAIRS_CONFIG)).toContain("between 18 and 36");
+    expect(bettableHands(nine(NINE + "P".repeat(60), "nine-opposite-147"))).toBe(18);
+    expect(topStake(NINE_OPPOSITE_147_CONFIG)).toBe(400);
+    expect(topStake(NINE_OPPOSITE_PAIRS_CONFIG)).toBe(100);
+  });
+
+  it("says which hands the won/lost tally counts", () => {
+    expect(describeTallyScope(NINE_OPPOSITE_147_CONFIG)).toBe(
+      "only hands 1, 4 and 7 of each group, the ones it bets",
+    );
+    expect(describeTallyScope(NINE_OPPOSITE_PAIRS_CONFIG)).toBe("every hand it covers, bet or not");
+  });
+
+  it("numbers the first played group 2", () => {
+    expect(groupLabel(NINE_OPPOSITE_147_CONFIG, 1)).toBe(2);
+    expect(groupLabel(REVERSE_TWELVE_CONFIG, 1)).toBe(1);
+    expect(nextHandDetail(nine(NINE + "P", "nine-opposite-pairs"))).toContain("group 2, hand 2 of 9");
+  });
+
+  it("says why a hand is sat out and where the next bet is", () => {
+    expect(describeSittingOut(nine(NINE + "P", "nine-opposite-147"))).toBe(
+      "9 Opposite (1-4-7) does not bet hand 2 of a group. The next bet is on hand 13.",
+    );
+    expect(describeSittingOut(nine(NINE + "B", "nine-opposite-pairs"))).toBe(
+      "The bet before this one won, so 9 Opposite (pairs) sits out the rest of that three. The next bet is on hand 13.",
+    );
+  });
+
+  it("reports the money stop-win", () => {
+    expect(describeStopWinTarget(NINE_OPPOSITE_147_CONFIG, money)).toBe("it is $300 up");
+    expect(describeStopWinResult(nine(NINE + "PPP", "nine-opposite-147"), false, money)).toBe(
+      "Down $50 so far — it stops for the shoe at $300 up.",
+    );
+  });
+});
+

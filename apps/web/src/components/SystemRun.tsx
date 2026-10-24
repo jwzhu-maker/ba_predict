@@ -1,7 +1,11 @@
 import {
   bettableHands,
+  describeBetSelection,
   describeRunShape,
+  describeStopWinResult,
+  describeTallyScope,
   describeSystemRules,
+  groupLabel,
 } from "@ba-predict/app-core";
 import { Card, Notice, Stat } from "./Primitives";
 import { formatPercent } from "../lib/format";
@@ -26,7 +30,6 @@ export default function SystemRun() {
   const money = useMoney();
 
   const possible = bettableHands(run);
-  const gated = run.config.groupsGateBetting;
   // Compared by id, not by `activeSystem === null`: the run falls back to
   // the default for an unselected OR unrecognised id, and either way this
   // card is then showing what that system WOULD have done rather than what
@@ -66,6 +69,12 @@ export default function SystemRun() {
   }
 
   const ahead = run.net >= 0;
+  // A rule that bets only some hands of a group also reports how the rule
+  // called every hand of it, bet or not.
+  const tallied = run.config.betSteps != null;
+  // The Martingale's own result — did it get its eight wins ahead — beside
+  // the money, rather than only as a note on whichever group it landed in.
+  const stopWin = describeStopWinResult(run, finished, money);
 
   return (
     <Card
@@ -77,13 +86,18 @@ export default function SystemRun() {
         <span className={`system-net ${ahead ? "good" : "bad"}`}>
           {money.format(Math.abs(run.net))}
         </span>
+        {stopWin ? (
+          <p className={`system-outcome${run.targetReachedAt !== null ? " good" : ""}`}>
+            {stopWin}
+          </p>
+        ) : null}
       </div>
 
       <div className="stat-grid">
         <Stat
           label="Bets placed"
           value={`${run.bets} of ${possible}`}
-          hint={gated ? "A group stops at its first loss" : "Every hand in the range"}
+          hint={describeBetSelection(run.config)}
         />
         <Stat label="Won" value={`${run.wins} (${formatPercent(run.wins / run.bets, 0)})`} />
         <Stat label="Staked" value={money.format(run.staked)} />
@@ -95,6 +109,13 @@ export default function SystemRun() {
           hint="Net over everything staked"
         />
         <Stat label="Clean groups" value={`${run.perfectGroups} of ${run.groups.length}`} />
+        {tallied && run.callsRight + run.callsWrong > 0 ? (
+          <Stat
+            label="Hands won / lost"
+            value={`${run.callsRight} / ${run.callsWrong}`}
+            hint={`${formatPercent(run.callsRight / (run.callsRight + run.callsWrong), 0)} won, hands ${run.config.lookback + 1}–${Math.min(run.config.lastHand ?? run.handsAvailable, run.handsAvailable)}, after a stop-win too`}
+          />
+        ) : null}
       </div>
 
       <div className="table-scroll">
@@ -111,7 +132,7 @@ export default function SystemRun() {
             {run.groups.map((group) => (
               <tr key={group.group}>
                 <th scope="row">
-                  {group.group}
+                  {groupLabel(run.config, group.group)}
                   <span className="row-note row-note-muted">
                     {run.targetReachedAt !== null && group.lastHand === run.targetReachedAt
                       ? `hands ${group.firstHand}–${group.lastHand}, stop-win reached`
@@ -121,6 +142,12 @@ export default function SystemRun() {
                         ? `hands ${group.firstHand}–${group.lastHand}, lost on ${group.lostAt}`
                         : `hands ${group.firstHand}–${group.lastHand}, shoe ended`}
                   </span>
+                  {tallied ? (
+                    <span className="row-note row-note-muted">
+                      {group.callsRight + group.callsWrong} hands: {group.callsRight} won,{" "}
+                      {group.callsWrong} lost
+                    </span>
+                  ) : null}
                 </th>
                 <td>
                   {group.wins}/{group.bets}
@@ -132,6 +159,15 @@ export default function SystemRun() {
           </tbody>
         </table>
       </div>
+
+      {tallied ? (
+        <p className="field-hint">
+          Under each group, <strong>won</strong> and <strong>lost</strong> count{" "}
+          {describeTallyScope(run.config)}: won when the hand came out opposite the hand{" "}
+          {run.config.lookback} before it. <strong>Bets</strong> is the bets won out of those
+          placed.
+        </p>
+      ) : null}
 
       {run.incomplete ? (
         <Notice tone="info">
